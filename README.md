@@ -15,8 +15,8 @@ This project is a PDF Research Paper Summarizer that uses Natural Language Proce
 1. **Clone the repository:**
 
    ```sh
-   git clone https://github.com/yourusername/pdf-research-paper-summarizer.git
-   cd pdf-research-paper-summarizer
+   git clone https://github.com/drhammed/summarization_tool.git
+   
 
 
 
@@ -40,12 +40,12 @@ source venv/bin/activate  # On Windows use `venv\Scripts\activate`
 
 - Create credentials (OAuth 2.0 Client IDs) and download the credentials.json file.
 
-- Place the credentials.json file in the project directory. For a full instruction on this, see my (GDriveOps python package0[https://pypi.org/project/GDriveOps/]
+- Place the credentials.json file in the project directory. For a full instruction on this, see my [GDriveOps python package](https://pypi.org/project/GDriveOps/)
 
 
 2. OpenAI API Key:
 
-Obtain an API key from (OpenAI)[https://platform.openai.com/apps].
+Obtain an API key from [OpenAI](https://platform.openai.com/apps).
 
 Set the environment variable My_OpenAI_API_key with your API key.
 
