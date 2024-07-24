@@ -52,7 +52,7 @@ from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.stem import WordNetLemmatizer
 import string
 from langchain.embeddings import HuggingFaceInstructEmbeddings
-from InstructorEmbedding import INSTRUCTOR
+#from InstructorEmbedding import INSTRUCTOR
 from sklearn.cluster import KMeans
 import numpy as np
 import voyageai
