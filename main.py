@@ -131,9 +131,9 @@ def extract_sections(text):
 # GROQ_API_KEY = os.getenv("My_Groq_API_key")
 # VOYAGEAI_API_key = os.getenv("My_voyageai_API_key")
 
-OPENAI_API_KEY = st.secrets["api"]("My_OpenAI_API_key")
-GROQ_API_KEY = st.secrets["api"]("My_Groq_API_key")
-VOYAGEAI_API_key = st.secrets["api"]("My_voyageai_API_key")
+OPENAI_API_KEY = st.secrets["api_keys"]("OPENAI_API_KEY")
+GROQ_API_KEY = st.secrets["api_keys"]("GROQ_API_KEY")
+VOYAGEAI_API_key = st.secrets["api_keys"]("VOYAGE_AI_API_KEY")
 
 model_options = ["llama3-8b-8192", "llama3-70b-8192", "gpt-4o-mini", "gpt-4o", "gpt-4"]
 selected_model = st.sidebar.selectbox("Select a model", model_options)
