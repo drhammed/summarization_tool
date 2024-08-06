@@ -104,19 +104,24 @@ def extract_sections(text):
     
     current_section = None
     start_extracting = False
+    is_discussion = False
     for line in text.split('\n'):
-        line_lower = line.lower()
-        if "methodology" in line_lower or "methods" in line_lower:
-            current_section = "methodology"
-            start_extracting = True
-        elif "results" in line_lower:
-            current_section = "results"
-        elif "discussion" in line_lower:
-            current_section = "discussion"
-        elif "conclusion" in line_lower:
+        if "References" in line:
+            start_extracting = False    
+        elif "Conclusion" in line:
             current_section = "conclusion"
-        elif "references" in line_lower:
-            start_extracting = False
+        else:    
+            line_lower = line.lower()
+            if "methodology" in line_lower or "methods" in line_lower and not is_discussion:
+                current_section = "methodology"
+                start_extracting = True
+            elif "results" in line_lower and not is_discussion:
+                current_section = "results"
+            elif "discussion" in line_lower:
+                current_section = "discussion"
+                is_discussion = True
+            elif "acknowledgements" in line_lower:
+                start_extracting = False
         
         if start_extracting and current_section:
             sections[current_section] += line + "\n"
