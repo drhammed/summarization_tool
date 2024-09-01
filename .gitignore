@@ -7,3 +7,9 @@
 *.ipynb
 
 *.csv
+.Rproj.user
+*.Rproj
+
+*.tex
+*.pdf
+
