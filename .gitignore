@@ -1,15 +1,29 @@
-*.DS_Store
+# Ignore RStudio project files
+.Rproj.user/
+.Rhistory
+*.RData
+.Ruserdata
+*.Rproj
+*.Rmd
 
+# Ignore DS Store files
+.DS_Store
+
+
+#Ignore the folder
+*/
+
+#Ignore  the csv files
+*.csv
+
+
+#ignore json files
 *.json
 
 *.toml
 
 *.ipynb
 
-*.csv
-.Rproj.user
-*.Rproj
-
+#ignore the tex and pdf files
 *.tex
 *.pdf
-
