@@ -70,7 +70,7 @@ nltk.download('punkt_tab')
 
 # Set Streamlit page configuration
 st.set_page_config(
-    page_title="PDF Summarizer",
+    page_title="Research Synthesis",
     layout="wide",
     initial_sidebar_state="expanded",
 )
