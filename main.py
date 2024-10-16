@@ -450,7 +450,7 @@ if uploaded_files:
 st.sidebar.subheader("Prompt")
 prompt = st.sidebar.text_area(
     "Enter the prompt for summarization:",
-    value="Please provide a concise summary of the following text."
+    value="Please provide your prompt"
 )
 
 # Model Selection
