@@ -1,3 +1,4 @@
+
 from __future__ import print_function
 import os
 import re
@@ -54,6 +55,8 @@ from rouge_score import rouge_scorer
 from io import BytesIO
 
 
+
+
 # Initialize NLTK components
 from nltk.stem import WordNetLemmatizer
 
@@ -62,6 +65,8 @@ nltk.download('punkt_tab')
 #nltk.download('punkt')
 #nltk.download('stopwords')
 #nltk.download('wordnet')
+
+
 
 # Set Streamlit page configuration
 st.set_page_config(
@@ -91,15 +96,16 @@ class PDFSummarizer:
 
         return processed_text
 
-    def extract_text_from_pdf(self, pdf_path):
+    def extract_text_from_pdf(self, pdf_file):
         try:
-            doc = fitz.open(pdf_path)
+            pdf_file.seek(0)  # Ensure the file pointer is at the start
+            doc = fitz.open(stream=pdf_file, filetype="pdf")
             text = ""
             for page in doc:
                 text += page.get_text()
             return text
         except Exception as e:
-            st.error(f"Error reading PDF file '{pdf_path}': {e}")
+            st.error(f"Error reading PDF file: {e}")
             return ""
 
     def extract_sections(self, text, start_section="methodology"):
@@ -336,8 +342,10 @@ class PDFSummarizer:
             
             try:
                 # Read PDF content
-                with BytesIO(uploaded_file.read()) as pdf_stream:
-                    text = self.extract_text_from_pdf(pdf_stream)
+                pdf_bytes = uploaded_file.read()
+                pdf_stream = BytesIO(pdf_bytes)
+
+                text = self.extract_text_from_pdf(pdf_stream)
 
                 # Skip processing if extracted text is empty
                 if not text.strip():
@@ -355,7 +363,7 @@ class PDFSummarizer:
                 # Summarize the text
                 summary = self.summarize_text(
                     preprocessed_text, 
-                    selected_model=selected_model, 
+                    selected_model=selected_model,  # Ensure 'selected_model' is defined in the scope
                     prompt=prompt, 
                     GROQ_API_KEY=GROQ_API_KEY, 
                     VOYAGEAI_API_key=VOYAGEAI_API_key, 
@@ -401,9 +409,10 @@ class PDFSummarizer:
 # Initialize the summarizer
 summarizer = PDFSummarizer()
 
+
 # Streamlit App Layout
 st.title("PDF Research Paper Summarizer")
-st.write("Upload your PDF files, select the desired options, and generate summaries effortlessly.")
+st.write("Upload your PDF files, select the desired options, and generate summaries.")
 
 # Sidebar for Configuration
 st.sidebar.header("Configuration")
@@ -494,7 +503,7 @@ VOYAGEAI_API_key = st.sidebar.text_input(
 st.sidebar.subheader("Prompt")
 prompt = st.sidebar.text_area(
     "Enter the prompt for summarization:",
-    value="Please provide a concise summary of the following text."
+    value="Please provide your prompt."
 )
 
 # Start Processing Button
