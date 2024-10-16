@@ -434,6 +434,13 @@ uploaded_files = st.sidebar.file_uploader(
 if uploaded_files:
     st.sidebar.success(f"{len(uploaded_files)} file(s) uploaded.")
 
+# Prompt Input
+st.sidebar.subheader("Prompt")
+prompt = st.sidebar.text_area(
+    "Enter the prompt for summarization:",
+    value="Please provide your prompt."
+)
+
 # Model Selection
 model_options = [
     "llama3-8b-8192", 
@@ -456,6 +463,7 @@ start_section = st.sidebar.selectbox(
     options=section_options,
     index=1  # Default to 'methodology'
 )
+
 
 # Parameter Inputs
 st.sidebar.subheader("Parameters")
@@ -506,12 +514,7 @@ VOYAGEAI_API_key = st.sidebar.text_input(
     type="password"
 )
 
-# Prompt Input
-st.sidebar.subheader("Prompt")
-prompt = st.sidebar.text_area(
-    "Enter the prompt for summarization:",
-    value="Please provide your prompt."
-)
+
 
 # Start Processing Button
 if st.sidebar.button("Start Processing"):
