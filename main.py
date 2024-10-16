@@ -418,7 +418,7 @@ if 'summaries' not in st.session_state:
     st.session_state.summaries = {}
 
 # Streamlit App Layout
-st.title("📄 Ecological Research Synthesis")
+st.title("Ecological Research Synthesis")
 st.write("Upload your PDF files, select the desired options, and generate summaries.")
 
 # Sidebar for Configuration
