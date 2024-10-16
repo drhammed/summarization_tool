@@ -67,10 +67,9 @@ nltk.download('punkt_tab')
 #nltk.download('wordnet')
 
 
-
 # Set Streamlit page configuration
 st.set_page_config(
-    page_title="Research Synthesis",
+    page_title="Ecological Research Synthesis",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -286,7 +285,12 @@ class PDFSummarizer:
         selected_text = ' '.join(selected_chunks)
         
         if len(selected_text) > chunk_size:
-            summary = ' '.join(conversation.run(selected_text[i:i + chunk_size]) for i in range(0, len(selected_text), chunk_size))
+            summary_parts = []
+            for i in range(0, len(selected_text), chunk_size):
+                chunk = selected_text[i:i + chunk_size]
+                part = conversation.run(chunk)
+                summary_parts.append(part)
+            summary = ' '.join(summary_parts)
         else:
             summary = conversation.run(selected_text)
 
@@ -409,9 +413,12 @@ class PDFSummarizer:
 # Initialize the summarizer
 summarizer = PDFSummarizer()
 
+# Initialize session state for summaries
+if 'summaries' not in st.session_state:
+    st.session_state.summaries = {}
 
 # Streamlit App Layout
-st.title("Ecological Research Synthesis")
+st.title("📄 Ecological Research Synthesis")
 st.write("Upload your PDF files, select the desired options, and generate summaries.")
 
 # Sidebar for Configuration
@@ -530,30 +537,38 @@ if st.sidebar.button("Start Processing"):
             )
         
         if summaries:
+            # Store summaries in session_state
+            st.session_state.summaries.update(summaries)
             st.success("Summaries generated successfully!")
-
-            for pdf_filename, summary_file in summaries.items():
-                if summary_file:
-                    if output_format == 'docx':
-                        st.download_button(
-                            label=f"Download {pdf_filename} Summary (DOCX)",
-                            data=summary_file,
-                            file_name=f"Summary-{os.path.splitext(pdf_filename)[0]}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        )
-                    elif output_format == 'json':
-                        st.download_button(
-                            label=f"Download {pdf_filename} Summary (JSON)",
-                            data=summary_file,
-                            file_name=f"Summary-{os.path.splitext(pdf_filename)[0]}.json",
-                            mime="application/json"
-                        )
-                    elif output_format == 'csv':
-                        st.download_button(
-                            label=f"Download {pdf_filename} Summary (CSV)",
-                            data=summary_file,
-                            file_name=f"Summary-{os.path.splitext(pdf_filename)[0]}.csv",
-                            mime="text/csv"
-                        )
         else:
             st.warning("No summaries were generated.")
+
+# Display Download Buttons from session_state
+if st.session_state.summaries:
+    st.header("Download Summaries")
+    for pdf_filename, summary_file in st.session_state.summaries.items():
+        if summary_file:
+            if output_format == 'docx':
+                st.download_button(
+                    label=f"Download {pdf_filename} Summary (DOCX)",
+                    data=summary_file,
+                    file_name=f"Summary-{os.path.splitext(pdf_filename)[0]}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    key=f"download_docx_{pdf_filename}"
+                )
+            elif output_format == 'json':
+                st.download_button(
+                    label=f"Download {pdf_filename} Summary (JSON)",
+                    data=summary_file,
+                    file_name=f"Summary-{os.path.splitext(pdf_filename)[0]}.json",
+                    mime="application/json",
+                    key=f"download_json_{pdf_filename}"
+                )
+            elif output_format == 'csv':
+                st.download_button(
+                    label=f"Download {pdf_filename} Summary (CSV)",
+                    data=summary_file,
+                    file_name=f"Summary-{os.path.splitext(pdf_filename)[0]}.csv",
+                    mime="text/csv",
+                    key=f"download_csv_{pdf_filename}"
+                )
