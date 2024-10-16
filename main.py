@@ -51,6 +51,7 @@ from langchain_voyageai import VoyageAIEmbeddings
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import silhouette_score
 from rouge_score import rouge_scorer
+from io import BytesIO
 
 
 # Initialize NLTK components
