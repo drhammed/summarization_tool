@@ -5,6 +5,7 @@ import PyPDF2
 import fitz
 import os.path
 import io
+import json
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -15,18 +16,9 @@ from docx import Document
 import configparser
 from GDriveOps.GDhandler import GoogleDriveHandler
 import nltk
-#from nltk.corpus import stopwords
-#from nltk.tokenize import sent_tokenize, word_tokenize
-#from nltk.stem import WordNetLemmatizer
 import string
-import openai
-import streamlit as st
-from langchain_openai import ChatOpenAI
-import openai
 from groq import Groq
 from langchain.chains import LLMChain, RetrievalQA
-#import time
-#import re
 import warnings
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import HumanMessage
@@ -50,20 +42,27 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.stem import WordNetLemmatizer
-import string
-from langchain.embeddings import HuggingFaceInstructEmbeddings
-#from InstructorEmbedding import INSTRUCTOR
 from sklearn.cluster import KMeans
 import numpy as np
+import pandas as pd
 import voyageai
 from langchain_voyageai import VoyageAIEmbeddings
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics import silhouette_score
 from rouge_score import rouge_scorer
+from ipywidgets import widgets
+from IPython.display import display
+import warnings
+from llama_index.core.prompts import PromptTemplate
+from pydantic import BaseModel, Field
 
 
-nltk.download('punkt')
+nltk.download('punkt_tab')
+#nltk.download('punkt')
 #nltk.download('stopwords')
-nltk.download('wordnet')
+#nltk.download('wordnet')
+
+
 
 def preprocess_text(text):
     lemmatizer = WordNetLemmatizer()
