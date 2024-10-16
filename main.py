@@ -1,19 +1,9 @@
-
 from __future__ import print_function
 import os
 import re
-import PyPDF2
-import fitz
-import os.path
-import io
+import fitz  # PyMuPDF
 import json
 import streamlit as st
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-from googleapiclient.http import MediaFileUpload
 from docx import Document
 import configparser
 from GDriveOps.GDhandler import GoogleDriveHandler
@@ -40,7 +30,6 @@ from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain_groq import ChatGroq
 import uuid
 from datetime import datetime, timedelta
-import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.stem import WordNetLemmatizer
@@ -53,19 +42,18 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import silhouette_score
 from rouge_score import rouge_scorer
 from io import BytesIO
-
-
-
+import zipfile  # New import for ZIP functionality
 
 # Initialize NLTK components
 from nltk.stem import WordNetLemmatizer
 
-nltk.download('punkt_tab')
+# Ensure necessary NLTK data is downloaded
+nltk.download('punkt')
+nltk.download('wordnet')
+nltk.download('stopwords')
 
-#nltk.download('punkt')
-#nltk.download('stopwords')
-#nltk.download('wordnet')
-
+# Suppress warnings for cleaner output
+warnings.filterwarnings("ignore")
 
 # Set Streamlit page configuration
 st.set_page_config(
@@ -410,6 +398,30 @@ class PDFSummarizer:
 
         return summaries
 
+def generate_zip(summaries, output_format):
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for pdf_filename, summary_file in summaries.items():
+            if summary_file:
+                # Determine the file extension based on output_format
+                if output_format == 'docx':
+                    file_extension = '.docx'
+                elif output_format == 'json':
+                    file_extension = '.json'
+                elif output_format == 'csv':
+                    file_extension = '.csv'
+                else:
+                    file_extension = '.txt'  # Fallback
+
+                # Create a filename for the summary
+                summary_filename = f"Summary-{os.path.splitext(pdf_filename)[0]}{file_extension}"
+                
+                # Write the summary to the ZIP file
+                zip_file.writestr(summary_filename, summary_file.getvalue())
+
+    zip_buffer.seek(0)
+    return zip_buffer
+
 # Initialize the summarizer
 summarizer = PDFSummarizer()
 
@@ -421,6 +433,9 @@ if 'summaries' not in st.session_state:
 st.title("Ecological Research Synthesis")
 st.write("Upload your PDF files, select the desired options, and generate summaries.")
 
+# Sidebar for Configuration
+st.sidebar.header("Configuration")
+
 # File Uploader
 uploaded_files = st.file_uploader(
     "Upload PDF files",
@@ -430,16 +445,12 @@ uploaded_files = st.file_uploader(
 
 if uploaded_files:
     st.success(f"{len(uploaded_files)} file(s) uploaded.")
-    
-
-# Sidebar for Configuration
-st.sidebar.header("Configuration")
 
 # Prompt Input
 st.sidebar.subheader("Prompt")
 prompt = st.sidebar.text_area(
     "Enter the prompt for summarization:",
-    value="Please provide your prompt."
+    value="Please provide a concise summary of the following text."
 )
 
 # Model Selection
@@ -464,7 +475,6 @@ start_section = st.sidebar.selectbox(
     options=section_options,
     index=1  # Default to 'methodology'
 )
-
 
 # Parameter Inputs
 st.sidebar.subheader("Parameters")
@@ -515,8 +525,6 @@ VOYAGEAI_API_key = st.sidebar.text_input(
     type="password"
 )
 
-
-
 # Start Processing Button
 if st.sidebar.button("Start Processing"):
     if not uploaded_files:
@@ -550,6 +558,8 @@ if st.sidebar.button("Start Processing"):
 # Display Download Buttons from session_state
 if st.session_state.summaries:
     st.header("Download Summaries")
+    
+    # Display individual download buttons
     for pdf_filename, summary_file in st.session_state.summaries.items():
         if summary_file:
             if output_format == 'docx':
@@ -576,3 +586,23 @@ if st.session_state.summaries:
                     mime="text/csv",
                     key=f"download_csv_{pdf_filename}"
                 )
+    
+    # Add a separator
+    st.markdown("---")
+    
+    # Add the "Download All Summaries" button within an expander for better UI
+    with st.expander("Download All Summaries as ZIP"):
+        if st.button("Download All Summaries"):
+            # Ensure there are summaries to download
+            if st.session_state.summaries:
+                with st.spinner("Generating ZIP file..."):
+                    zip_buffer = generate_zip(st.session_state.summaries, output_format)
+                st.success("ZIP file generated successfully!")
+                st.download_button(
+                    label="📥 Download All Summaries (ZIP)",
+                    data=zip_buffer,
+                    file_name="All_Summaries.zip",
+                    mime="application/zip"
+                )
+            else:
+                st.warning("No summaries available to download.")
