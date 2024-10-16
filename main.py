@@ -52,31 +52,42 @@ from sklearn.metrics import silhouette_score
 from rouge_score import rouge_scorer
 
 
+# Initialize NLTK components
+from nltk.stem import WordNetLemmatizer
+
 nltk.download('punkt_tab')
 
 #nltk.download('punkt')
 #nltk.download('stopwords')
+#nltk.download('wordnet')
 
-def preprocess_text(text):
-    lemmatizer = WordNetLemmatizer()
-    sentences = sent_tokenize(text)
-    punctuation = set(string.punctuation)
-    
-    processed_sentences = []
-    for sent in sentences:
-        words = word_tokenize(sent)
-        filtered_words = [
-            lemmatizer.lemmatize(word.lower()) 
-            for word in words 
-            if word.lower() not in punctuation and word.isalpha()
-        ]
-        processed_sentences.append(' '.join(filtered_words))
-    
-    # Join sentences back into a single string and remove numbers
-    processed_text = ' '.join(processed_sentences)
-    processed_text = re.sub(r'\d+', '', processed_text)
-    
-    return processed_text
+# Set Streamlit page configuration
+st.set_page_config(
+    page_title="PDF Summarizer",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+class PDFSummarizer:
+    def preprocess_text(self, text):
+        lemmatizer = WordNetLemmatizer()
+        sentences = nltk.sent_tokenize(text)
+        punctuation = set(string.punctuation)
+
+        processed_sentences = []
+        for sent in sentences:
+            words = nltk.word_tokenize(sent)
+            filtered_words = [
+                lemmatizer.lemmatize(word.lower()) 
+                for word in words 
+                if word.lower() not in punctuation and word.isalpha()
+            ]
+            processed_sentences.append(' '.join(filtered_words))
+
+        processed_text = ' '.join(processed_sentences)
+        processed_text = re.sub(r'\d+', '', processed_text)
+
+        return processed_text
 
     def extract_text_from_pdf(self, pdf_path):
         try:
