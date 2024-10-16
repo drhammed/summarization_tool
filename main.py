@@ -411,7 +411,7 @@ summarizer = PDFSummarizer()
 
 
 # Streamlit App Layout
-st.title("PDF Research Paper Summarizer")
+st.title("Ecological Research Synthesis")
 st.write("Upload your PDF files, select the desired options, and generate summaries.")
 
 # Sidebar for Configuration
