@@ -421,18 +421,19 @@ if 'summaries' not in st.session_state:
 st.title("Ecological Research Synthesis")
 st.write("Upload your PDF files, select the desired options, and generate summaries.")
 
-# Sidebar for Configuration
-st.sidebar.header("Configuration")
-
 # File Uploader
-uploaded_files = st.sidebar.file_uploader(
+uploaded_files = st.file_uploader(
     "Upload PDF files",
     type=["pdf"],
     accept_multiple_files=True
 )
 
 if uploaded_files:
-    st.sidebar.success(f"{len(uploaded_files)} file(s) uploaded.")
+    st.success(f"{len(uploaded_files)} file(s) uploaded.")
+    
+
+# Sidebar for Configuration
+st.sidebar.header("Configuration")
 
 # Prompt Input
 st.sidebar.subheader("Prompt")
