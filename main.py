@@ -37,8 +37,9 @@ if "error_log" not in st.session_state:
 # ---------------------------------------------------------------------------
 # Sidebar — Configuration
 # ---------------------------------------------------------------------------
+import time as _time
 st.sidebar.image(
-    "https://img.shields.io/pypi/v/res-sum?style=flat-square&label=res-sum",
+    f"https://img.shields.io/pypi/v/res-sum?style=flat-square&label=res-sum&t={int(_time.time() // 3600)}",
     width=150,
 )
 st.sidebar.title("Configuration")
