@@ -146,9 +146,10 @@ def init_res_sum():
 st.title("📚 res-sum — Research Evidence Synthesis")
 st.caption("Upload research papers, build knowledge graphs, and generate structured summaries using LLMs.")
 
-tab_analysis, tab_explore = st.tabs([
+tab_analysis, tab_kb, tab_vectorstore = st.tabs([
     "🔬 Analysis",
-    "🔗 Explore Knowledge Base",
+    "🔗 Knowledge Base",
+    "🔍 Semantic Search",
 ])
 
 # ---------------------------------------------------------------------------
@@ -363,15 +364,116 @@ with tab_analysis:
 # ---------------------------------------------------------------------------
 # Tab 2: Explore Knowledge Base (embedded dashboard)
 # ---------------------------------------------------------------------------
-with tab_explore:
-    st.header("Explore Knowledge Base")
-    st.caption("Interactive dashboard with Overview, Knowledge Graph, Vector Store, and Communities — all in one view.")
+# Tab 2: Knowledge Base (interactive dashboard)
+# ---------------------------------------------------------------------------
+with tab_kb:
+    st.header("Knowledge Base")
+    st.caption("Interactive dashboard with Overview, Knowledge Graph, Vector Store preview, and Communities.")
 
     if st.session_state.dashboard_html:
         import streamlit.components.v1 as components
         components.html(st.session_state.dashboard_html, height=1200, scrolling=True)
     else:
         st.info("Run analysis first to build the knowledge base. Go to the **Analysis** tab and click **Run Analysis**.")
+
+
+# ---------------------------------------------------------------------------
+# Tab 3: Vector Store (live ChromaDB search + browse)
+# ---------------------------------------------------------------------------
+with tab_vectorstore:
+    st.header("Semantic Search")
+
+    if st.session_state.rs and st.session_state.ingested:
+        rs = st.session_state.rs
+        vs = rs.vector_store
+
+        search_subtab, browse_subtab = st.tabs(["🔍 Search (Cosine Similarity)", "📄 Browse Chunks"])
+
+        with search_subtab:
+            st.caption("Search uses real cosine similarity on ChromaDB embeddings — the same retrieval used during analysis.")
+
+            papers = vs.list_papers() if hasattr(vs, "list_papers") else []
+            search_paper = st.selectbox(
+                "Filter by paper",
+                ["All papers"] + papers,
+                key="search_paper_filter",
+            )
+
+            search_query = st.text_input(
+                "Search query",
+                placeholder="e.g., species distribution modeling, trophic cascade effects...",
+                key="vector_search_query",
+            )
+            search_n = st.slider("Number of results", min_value=3, max_value=30, value=10, key="vector_search_n")
+
+            if search_query:
+                where = {"paper_filename": search_paper} if search_paper != "All papers" else None
+                results = vs.search(search_query, n_results=search_n, where=where)
+                docs = results.get("documents", [[]])[0]
+                ids = results.get("ids", [[]])[0]
+                distances = results.get("distances", [[]])[0]
+                metadatas = results.get("metadatas", [[]])[0]
+
+                st.markdown(f"**{len(docs)} results** for *\"{search_query}\"*")
+
+                for rank, (doc, doc_id, dist, meta) in enumerate(zip(docs, ids, distances, metadatas), 1):
+                    score = 1.0 / (1.0 + dist)
+                    paper = meta.get("paper_filename", "unknown") if meta else "unknown"
+                    section = meta.get("section", "unknown") if meta else "unknown"
+
+                    if score > 0.6:
+                        color = "🟢"
+                    elif score > 0.4:
+                        color = "🟡"
+                    else:
+                        color = "🔴"
+
+                    with st.expander(f"{color} #{rank} — Score: **{score:.4f}** — {paper} ({section})"):
+                        st.markdown(f"**Cosine Similarity Score:** `{score:.6f}`")
+                        st.markdown(f"**Paper:** {paper}")
+                        st.markdown(f"**Section:** {section}")
+                        st.markdown(f"**Chunk ID:** `{doc_id}`")
+                        st.markdown("---")
+                        st.markdown(doc)
+            else:
+                st.info("Enter a query above to search with cosine similarity.")
+
+        with browse_subtab:
+            st.caption("Browse all chunks stored in the vector database.")
+
+            papers = vs.list_papers() if hasattr(vs, "list_papers") else []
+            total = vs.count()
+            st.metric("Total Chunks", total)
+
+            if papers:
+                selected_paper = st.selectbox(
+                    "Filter by paper",
+                    ["All papers"] + papers,
+                    key="browse_paper_filter",
+                )
+                where = {"paper_filename": selected_paper} if selected_paper != "All papers" else None
+
+                try:
+                    if where:
+                        all_data = vs.collection.get(where=where, include=["metadatas", "documents"])
+                    else:
+                        all_data = vs.collection.get(include=["metadatas", "documents"])
+
+                    num_chunks = len(all_data.get("ids", []))
+                    st.markdown(f"Showing **{min(num_chunks, 50)}** of **{num_chunks}** chunks")
+
+                    for i in range(min(num_chunks, 50)):
+                        doc = all_data["documents"][i] if all_data.get("documents") else ""
+                        meta = all_data["metadatas"][i] if all_data.get("metadatas") else {}
+                        section = meta.get("section", "unknown")
+                        chunk_idx = meta.get("chunk_index", i)
+
+                        with st.expander(f"Chunk {chunk_idx + 1} — Section: {section} — `{all_data['ids'][i][:12]}...`"):
+                            st.markdown(doc)
+                except Exception as e:
+                    st.error(f"Failed to browse chunks: {e}")
+    else:
+        st.info("Run analysis first. Go to the **Analysis** tab and click **Run Analysis**.")
 
 
 # ---------------------------------------------------------------------------
