@@ -1,78 +1,46 @@
-# PDF Research Paper Summarizer
+# res-sum Streamlit App
 
-This project is a PDF Research Paper Summarizer that uses Natural Language Processing (NLP) techniques to extract and summarize key sections from research papers. The summarizer focuses on the methodology, results, discussion, and conclusion sections, providing a high-level summary of the key findings and conclusions (although you could extend to cover introduction or other parts of the paper).
+A web interface for [res-sum](https://pypi.org/project/res-sum/) — research paper summarization with GraphRAG.
 
 ## Features
 
-- **PDF Extraction:** Extract text content from PDF files.
-- **Text Preprocessing:** Clean and preprocess the extracted text for better summarization.
-- **Section Extraction:** Identify and extract specific sections from the research paper.
-- **Text Summarization:** Generate high-level summaries of the extracted sections using OpenAI's GPT-4 model.
-- **Streamlit Interface:** A user-friendly web interface for uploading PDF files and displaying summaries.
+- **Upload PDFs** and generate structured summaries using LLMs
+- **Interactive Knowledge Graph** — visualize entities and relationships extracted from papers
+- **Vector Store Browser** — search chunks by semantic similarity, browse by paper
+- **Community Detection** — view topic clusters and their LLM-generated summaries
+- **Multiple LLM providers** — Ollama Cloud, Groq, OpenAI, Anthropic
 
-## Installation
+## Live Demo
 
-1. **Clone the repository:**
+[sum-tool.streamlit.app](https://sum-tool.streamlit.app/)
 
-   ```sh
-   git clone https://github.com/drhammed/summarization_tool.git
-   
+## Run Locally
 
+```bash
+pip install -r requirements.txt
+streamlit run main.py
+```
 
+## How It Works
 
-## Set up a virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+This app is a thin UI layer over the `res-sum` Python package. All the heavy lifting (PDF parsing, knowledge graph construction, vector embeddings, hybrid retrieval, summarization) is handled by `res-sum`.
 
-## Install the required packages:
-`pip install -r requirements.txt`
-
-## Download NLTK data:
-`python -m nltk.downloader punkt wordnet`
+```
+Upload PDFs → res-sum ingests → ChromaDB + NetworkX → Hybrid retrieval → LLM summary
+```
 
 ## Configuration
 
-1. Google Drive API Credentials:
+Set API keys as environment variables to avoid re-entering them:
 
-- Create a project on the (Google Cloud Console).
+```bash
+export OLLAMA_API_KEY="your-key"    # for Ollama Cloud
+export GROQ_API_KEY="your-key"      # for Groq
+export OPENAI_API_KEY="your-key"    # for OpenAI
+export ANTHROPIC_API_KEY="your-key" # for Anthropic
+```
 
-- Enable the Google Drive API.
+## Powered By
 
-- Create credentials (OAuth 2.0 Client IDs) and download the credentials.json file.
-
-- Place the credentials.json file in the project directory. For a full instruction on this, see my [GDriveOps python package](https://pypi.org/project/GDriveOps/)
-
-
-2. OpenAI API Key:
-
-Obtain an API key from [OpenAI](https://platform.openai.com/apps).
-
-Set the environment variable My_OpenAI_API_key with your API key.
-
-`export My_OpenAI_API_key='your_openai_api_key'`
-
-
-## Usage
-
-1. Run the Streamlit app:
-   
-   `streamlit run app.py`
-
-2. Upload a PDF File:
-
-- Open the web interface.
-- Upload a PDF file containing the research paper.
-
-
-3. Generate Summary:
-
-- Wait for the text extraction and summarization to complete.
-- View the generated summary on the web interface.
-
-
-## Acknowledgments
-
-- This project uses the OpenAI GPT-4 model for text summarization.
-- The project is built using the Streamlit framework for the web interface.
-- Thanks to the Google Drive API for providing the tools to interact with Google Drive.
-
+- [res-sum](https://pypi.org/project/res-sum/) — GraphRAG-powered research synthesis
+- [Streamlit](https://streamlit.io/) — Python web framework

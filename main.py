@@ -1,608 +1,450 @@
-from __future__ import print_function
+"""res-sum Streamlit App — Interactive research paper summarization with GraphRAG."""
+
 import os
-import re
-import fitz  # PyMuPDF
+import tempfile
 import json
-import streamlit as st
-from docx import Document
-import configparser
-from GDriveOps.GDhandler import GoogleDriveHandler
-import nltk
-import string
-from groq import Groq
-from langchain.chains import LLMChain, RetrievalQA
-import warnings
-from langchain.memory import ConversationBufferMemory
-from langchain.schema import HumanMessage
-from langchain.prompts import ChatPromptTemplate
-from langchain.chains import ConversationChain
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.runnables.base import Runnable
-from langchain_core.prompts import (
-    ChatPromptTemplate,
-    HumanMessagePromptTemplate,
-    MessagesPlaceholder,
-)
-from langchain_core.messages import SystemMessage
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chains.conversation.memory import ConversationBufferWindowMemory
-from langchain_groq import ChatGroq
-import uuid
-from datetime import datetime, timedelta
-from nltk.corpus import stopwords
-from nltk.tokenize import sent_tokenize, word_tokenize
-from nltk.stem import WordNetLemmatizer
-from sklearn.cluster import KMeans
-import numpy as np
-import pandas as pd
-import voyageai
-from langchain_voyageai import VoyageAIEmbeddings
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.metrics import silhouette_score
-from rouge_score import rouge_scorer
 from io import BytesIO
-import zipfile  # New import for ZIP functionality
+from pathlib import Path
 
-# Initialize NLTK components
-from nltk.stem import WordNetLemmatizer
+import streamlit as st
 
-# Ensure necessary NLTK data is downloaded
-nltk.download('punkt')
-nltk.download('wordnet')
-nltk.download('stopwords')
-
-# Suppress warnings for cleaner output
-warnings.filterwarnings("ignore")
-
-# Set Streamlit page configuration
 st.set_page_config(
-    page_title="Ecological Research Synthesis",
+    page_title="res-sum — Research Evidence Synthesis",
+    page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-class PDFSummarizer:
-    def preprocess_text(self, text):
-        lemmatizer = WordNetLemmatizer()
-        sentences = nltk.sent_tokenize(text)
-        punctuation = set(string.punctuation)
-
-        processed_sentences = []
-        for sent in sentences:
-            words = nltk.word_tokenize(sent)
-            filtered_words = [
-                lemmatizer.lemmatize(word.lower()) 
-                for word in words 
-                if word.lower() not in punctuation and word.isalpha()
-            ]
-            processed_sentences.append(' '.join(filtered_words))
-
-        processed_text = ' '.join(processed_sentences)
-        processed_text = re.sub(r'\d+', '', processed_text)
-
-        return processed_text
-
-    def extract_text_from_pdf(self, pdf_file):
-        try:
-            pdf_file.seek(0)  # Ensure the file pointer is at the start
-            doc = fitz.open(stream=pdf_file, filetype="pdf")
-            text = ""
-            for page in doc:
-                text += page.get_text()
-            return text
-        except Exception as e:
-            st.error(f"Error reading PDF file: {e}")
-            return ""
-
-    def extract_sections(self, text, start_section="methodology"):
-        sections = {
-            "introduction": "",
-            "methodology": "",
-            "methods": "",
-            "results": "",
-            "discussion": "",
-            "conclusion": ""
-        }
-
-        current_section = None
-        start_extracting = False
-        is_discussion = False
-
-        for line in text.split('\n'):
-            line_lower = line.strip().lower()
-        
-            # Stop extracting when "references" section is encountered
-            if line_lower.startswith("references"):
-                start_extracting = False
-
-            # Start extracting from the "introduction" section
-            elif start_section == "introduction" and ("introduction" in line_lower):
-                current_section = "introduction"
-                start_extracting = True
-
-            # Start extracting from the "methodology" section, ensure not to start if "discussion" section already started
-            elif start_section == "methodology" and ("methodology" in line_lower or
-                                                 "methods" in line_lower or 
-                                                 "materials and methods" in line_lower or 
-                                                 "materials & methods" in line_lower) and not is_discussion:
-                current_section = "methodology"
-                start_extracting = True
-
-            elif "results" in line_lower and not is_discussion:
-                current_section = "results"
-                start_extracting = True
-
-            elif "discussion" in line_lower:
-                current_section = "discussion"
-                is_discussion = True  # To show that discussion section has started
-                start_extracting = True
-
-            elif "conclusion" in line_lower:
-                current_section = "conclusion"
-                start_extracting = True
-
-            # Stop extracting when "acknowledgements" section is encountered
-            elif "acknowledgements" in line_lower:
-                start_extracting = False
-
-            # Add lines to the current section if extracting is active
-            if start_extracting and current_section:
-                sections[current_section] += line + "\n"
-
-        # Combine the extracted sections based on the start_section
-        if start_section == "introduction":
-            combined_text = (sections["introduction"] + sections["methodology"] + sections["results"] +
-                             sections["discussion"] + sections["conclusion"])
-        else:
-            combined_text = (sections["methodology"] + sections["results"] + 
-                             sections["discussion"] + sections["conclusion"])
-
-        return combined_text, sections
-
-    def get_model(self, selected_model, GROQ_API_KEY):
-        model_mapping = {
-            "llama3-8b-8192": "llama3-8b-8192",
-            "llama3-70b-8192": "llama3-70b-8192",
-            "llama-3.2-1b-preview": "llama-3.2-1b-preview",
-            "llama-3.2-3b-preview": "llama-3.2-3b-preview",
-            "llama-3.2-11b-text-preview": "llama-3.2-11b-text-preview",
-            "llama-3.2-90b-text-preview": "llama-3.2-90b-text-preview"
-        }
-        if selected_model in model_mapping:
-            return ChatGroq(
-                groq_api_key=GROQ_API_KEY, 
-                model=model_mapping[selected_model], 
-                temperature=0.02, 
-                max_tokens=None, 
-                timeout=None, 
-                max_retries=2
-            )
-        else:
-            raise ValueError("Invalid model selected")
-
-    def chunk_text_with_langchain(self, text, chunk_size=8000, chunk_overlap=500):
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        chunks = text_splitter.split_text(text)
-        return chunks
-
-    def embed_chunks(self, chunks, VOYAGEAI_API_key):
-        vo = voyageai.Client(api_key=VOYAGEAI_API_key)
-        result = vo.embed(chunks, model="voyage-large-2-instruct", input_type="document")
-        vectors = result.embeddings
-        return np.array(vectors)
-
-    def clustering(self, vectors, num_clusters):
-        kmeans = KMeans(n_clusters=num_clusters, random_state=42).fit(vectors)
-        labels = kmeans.labels_
-
-        closest_indices = []
-        for i in range(num_clusters):
-            distances = np.linalg.norm(vectors - kmeans.cluster_centers_[i], axis=1)
-            closest_index = np.argmin(distances)
-            closest_indices.append(closest_index)
-
-        selected_indices = sorted(closest_indices)
-        return selected_indices
-
-    def filter_redundant_chunks(self, chunks, vectors, similarity_threshold=0.8):
-        unique_chunks = []
-        unique_vectors = []
-
-        for i, vector in enumerate(vectors):
-            if len(unique_vectors) == 0:
-                unique_chunks.append(chunks[i])
-                unique_vectors.append(vector)
-            else:
-                similarities = cosine_similarity([vector], unique_vectors)
-                if max(similarities[0]) < similarity_threshold:
-                    unique_chunks.append(chunks[i])
-                    unique_vectors.append(vector)
-
-        return unique_chunks, unique_vectors
-
-    def optimal_clusters_sil(self, vectors, max_k=50):
-        best_k = 2
-        best_score = -1
-
-        for k in range(2, max_k + 1):
-            kmeans = KMeans(n_clusters=k, random_state=42)
-            labels = kmeans.fit_predict(vectors)
-            score = silhouette_score(vectors, labels)
-        
-            if score > best_score:
-                best_score = score
-                best_k = k
-
-        return best_k
-
-    def summarize_text(self, text, selected_model, prompt, GROQ_API_KEY, VOYAGEAI_API_key, chunk_size=8000, chunk_overlap=500, similarity_threshold=0.8, num_clusters=10):
-        llm_mod = self.get_model(selected_model, GROQ_API_KEY)
-        system_prompt = prompt
-        prompt_template = ChatPromptTemplate.from_messages([
-            SystemMessage(content=system_prompt),
-            HumanMessagePromptTemplate.from_template("{text}")
-        ])
-        
-        conversation = LLMChain(llm=llm_mod, prompt=prompt_template)
-        
-        chunks = self.chunk_text_with_langchain(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        vectors = self.embed_chunks(chunks, VOYAGEAI_API_key)
-        
-        # Filter redundant chunks
-        unique_chunks, unique_vectors = self.filter_redundant_chunks(chunks, vectors, similarity_threshold=similarity_threshold)
-         
-        # Check if unique_chunks is not empty
-        if not unique_chunks:
-            st.warning(f"No unique chunks found for summarization. Skipping summarization.")
-            return ""  # Return an empty summary since no unique chunks are available
-
-        # If the num_clusters is too low compared to the requested num_clusters
-        if len(unique_chunks) < num_clusters:
-            st.warning(f"Requested {num_clusters} clusters, but only {len(unique_chunks)} unique chunks are available. Adjusting num_clusters to {len(unique_chunks)} clusters.")
-            num_clusters = len(unique_chunks)
-        
-        # Check whether the specified num_clusters is appropriate for the data structure
-        elif num_clusters > len(unique_chunks) / 2:
-            st.warning(f"Requested {num_clusters} clusters might not capture the data's structure optimally. Considering an optimal cluster analysis using Silhouette Analysis.")
-            num_clusters = self.optimal_clusters_sil(unique_vectors, max_k=min(len(unique_chunks), 50))
-            st.info(f"Using {num_clusters} clusters after optimization.")
-
-        selected_indices = self.clustering(unique_vectors, num_clusters)
-        selected_chunks = [unique_chunks[i] for i in selected_indices]
-        selected_text = ' '.join(selected_chunks)
-        
-        if len(selected_text) > chunk_size:
-            summary_parts = []
-            for i in range(0, len(selected_text), chunk_size):
-                chunk = selected_text[i:i + chunk_size]
-                part = conversation.run(chunk)
-                summary_parts.append(part)
-            summary = ' '.join(summary_parts)
-        else:
-            summary = conversation.run(selected_text)
-
-        return summary
-
-    def save_summary_as_docx(self, summary, pdf_filename):
-        try:
-            doc = Document()
-            title = f'Summary - {os.path.splitext(pdf_filename)[0]}'
-            doc.add_heading(title, 0)
-            doc.add_paragraph(summary)
-            byte_io = BytesIO()
-            doc.save(byte_io)
-            byte_io.seek(0)
-            return byte_io
-        except Exception as e:
-            st.error(f"Error saving summary for {pdf_filename}: {e}")
-            return None
-
-    def save_summary_as_json(self, summary, pdf_filename):
-        try:
-            summary_data = {"title": pdf_filename, "summary": summary}
-            byte_io = BytesIO()
-            byte_io.write(json.dumps(summary_data, indent=4).encode())
-            byte_io.seek(0)
-            return byte_io
-        except Exception as e:
-            st.error(f"Error saving summary as JSON for {pdf_filename}: {e}")
-            return None
-
-    def save_summary_as_csv(self, summary, pdf_filename):
-        try:
-            df = pd.DataFrame([{'title': pdf_filename, 'summary': summary}])
-            byte_io = BytesIO()
-            df.to_csv(byte_io, index=False)
-            byte_io.seek(0)
-            return byte_io
-        except Exception as e:
-            st.error(f"Error saving summary as CSV for {pdf_filename}: {e}")
-            return None
-
-    def summarize_pdfs(self, uploaded_files, prompt, GROQ_API_KEY, VOYAGEAI_API_key, 
-                      chunk_size=8000, chunk_overlap=500, similarity_threshold=0.8, 
-                      num_clusters=10, start_section="methodology", output_format="docx"):
-        summaries = {}
-        total_files = len(uploaded_files)
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
-        for idx, uploaded_file in enumerate(uploaded_files):
-            pdf_filename = uploaded_file.name
-            status_text.text(f"Processing {pdf_filename} ({idx + 1}/{total_files})...")
-            
-            try:
-                # Read PDF content
-                pdf_bytes = uploaded_file.read()
-                pdf_stream = BytesIO(pdf_bytes)
-
-                text = self.extract_text_from_pdf(pdf_stream)
-
-                # Skip processing if extracted text is empty
-                if not text.strip():
-                    st.warning(f"No text found in {pdf_filename}. Skipping...")
-                    continue
-
-                combined_text, _ = self.extract_sections(text, start_section=start_section)
-                preprocessed_text = self.preprocess_text(combined_text)
-
-                # Skip processing if preprocessed text is empty
-                if not preprocessed_text.strip():
-                    st.warning(f"No meaningful text after preprocessing for {pdf_filename}. Skipping...")
-                    continue
-
-                # Summarize the text
-                summary = self.summarize_text(
-                    preprocessed_text, 
-                    selected_model=selected_model,  # Ensure 'selected_model' is defined in the scope
-                    prompt=prompt, 
-                    GROQ_API_KEY=GROQ_API_KEY, 
-                    VOYAGEAI_API_key=VOYAGEAI_API_key, 
-                    chunk_size=chunk_size, 
-                    chunk_overlap=chunk_overlap, 
-                    similarity_threshold=similarity_threshold, 
-                    num_clusters=num_clusters
-                )
-
-                if not summary:
-                    st.warning(f"Summary is empty for {pdf_filename}. Skipping...")
-                    continue
-
-                # Save the summary based on the chosen format
-                if output_format == 'json':
-                    summary_file = self.save_summary_as_json(summary, pdf_filename)
-                    if summary_file:
-                        summaries[pdf_filename] = summary_file
-                elif output_format == 'csv':
-                    summary_file = self.save_summary_as_csv(summary, pdf_filename)
-                    if summary_file:
-                        summaries[pdf_filename] = summary_file
-                else:  # Default to docx
-                    summary_file = self.save_summary_as_docx(summary, pdf_filename)
-                    if summary_file:
-                        summaries[pdf_filename] = summary_file
-
-                st.success(f"Summary saved for {pdf_filename}")
-
-            except Exception as e:
-                st.error(f"An error occurred while processing {pdf_filename}: {e}")
-                continue
-
-            # Update progress bar
-            progress = (idx + 1) / total_files
-            progress_bar.progress(progress)
-
-        status_text.text("Processing complete. Summaries generated.")
-        progress_bar.empty()
-
-        return summaries
-
-def generate_zip(summaries, output_format):
-    zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for pdf_filename, summary_file in summaries.items():
-            if summary_file:
-                # Determine the file extension based on output_format
-                if output_format == 'docx':
-                    file_extension = '.docx'
-                elif output_format == 'json':
-                    file_extension = '.json'
-                elif output_format == 'csv':
-                    file_extension = '.csv'
-                else:
-                    file_extension = '.txt'  # Fallback
-
-                # Create a filename for the summary
-                summary_filename = f"Summary-{os.path.splitext(pdf_filename)[0]}{file_extension}"
-                
-                # Write the summary to the ZIP file
-                zip_file.writestr(summary_filename, summary_file.getvalue())
-
-    zip_buffer.seek(0)
-    return zip_buffer
-
-# Initialize the summarizer
-summarizer = PDFSummarizer()
-
-# Initialize session state for summaries
-if 'summaries' not in st.session_state:
+# ---------------------------------------------------------------------------
+# Session state initialization
+# ---------------------------------------------------------------------------
+if "rs" not in st.session_state:
+    st.session_state.rs = None
+if "ingested" not in st.session_state:
+    st.session_state.ingested = False
+if "summaries" not in st.session_state:
     st.session_state.summaries = {}
+if "dashboard_html" not in st.session_state:
+    st.session_state.dashboard_html = None
+if "temp_dir" not in st.session_state:
+    st.session_state.temp_dir = tempfile.mkdtemp(prefix="res_sum_")
 
-# Streamlit App Layout
-st.title("Ecological Research Synthesis")
-st.write("Upload your PDF files, select the desired options, and generate summaries.")
 
-# Sidebar for Configuration
-st.sidebar.header("Configuration")
+# ---------------------------------------------------------------------------
+# Sidebar — Configuration
+# ---------------------------------------------------------------------------
+st.sidebar.image(
+    "https://img.shields.io/pypi/v/res-sum?style=flat-square&label=res-sum",
+    width=150,
+)
+st.sidebar.title("Configuration")
 
-# File Uploader
-uploaded_files = st.file_uploader(
-    "Upload PDF files",
-    type=["pdf"],
-    accept_multiple_files=True
+# Provider selection
+provider = st.sidebar.selectbox(
+    "LLM Provider",
+    options=["ollama_cloud", "ollama", "groq", "openai", "anthropic"],
+    index=0,
+    help="Choose your LLM provider. Ollama Cloud is free with an API key.",
 )
 
-if uploaded_files:
-    st.success(f"{len(uploaded_files)} file(s) uploaded.")
-
-# Prompt Input
-st.sidebar.subheader("Prompt")
-prompt = st.sidebar.text_area(
-    "Enter the prompt for summarization:",
-    value="Please provide your prompt"
+# Model input
+default_models = {
+    "ollama_cloud": "gpt-oss:20b-cloud",
+    "ollama": "llama3.2",
+    "groq": "llama-3.3-70b-versatile",
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-sonnet-4-20250514",
+}
+model = st.sidebar.text_input(
+    "Model",
+    value=default_models.get(provider, "llama3.2"),
+    help="Model name for your chosen provider.",
 )
 
-# Model Selection
-model_options = [
-    "llama3-8b-8192", 
-    "llama3-70b-8192", 
-    "llama-3.2-1b-preview",
-    "llama-3.2-3b-preview",
-    "llama-3.2-11b-text-preview",
-    "llama-3.2-90b-text-preview"
-]
-selected_model = st.sidebar.selectbox(
-    "Select Model",
-    options=model_options,
-    index=0
+# API Key
+api_key = st.sidebar.text_input(
+    "API Key",
+    type="password",
+    help="Required for cloud providers. Set as env var to avoid re-entering.",
+    value=os.environ.get({
+        "ollama_cloud": "OLLAMA_API_KEY",
+        "groq": "GROQ_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+    }.get(provider, "OLLAMA_API_KEY"), ""),
 )
 
-# Start Section Selection
-section_options = ["introduction", "methodology"]
+# Domain
+domain = st.sidebar.selectbox(
+    "Domain",
+    options=["ecology", "general"],
+    index=0,
+    help="Domain-specific prompts and entity schemas.",
+)
+
+# Start section
 start_section = st.sidebar.selectbox(
     "Start Summary From",
-    options=section_options,
-    index=1  # Default to 'methodology'
+    options=["methodology", "introduction"],
+    index=0,
+    help="Which section to start extracting text for summaries. Knowledge graph always uses full paper.",
 )
 
-# Parameter Inputs
-st.sidebar.subheader("Parameters")
-similarity_threshold = st.sidebar.slider(
-    "Similarity Threshold",
-    min_value=0.0,
-    max_value=1.0,
-    value=0.8,
-    step=0.05
-)
-chunk_size = st.sidebar.number_input(
-    "Chunk Size",
-    min_value=1000,
-    max_value=10000,
-    value=8000,
-    step=500
-)
-chunk_overlap = st.sidebar.number_input(
-    "Chunk Overlap",
-    min_value=100,
-    max_value=2000,
-    value=500,
-    step=100
-)
-num_clusters = st.sidebar.number_input(
-    "Number of Clusters",
-    min_value=2,
-    max_value=100,
-    value=10,
-    step=1
+# Retrieval mode
+retrieval_mode = st.sidebar.selectbox(
+    "Retrieval Mode",
+    options=["hybrid", "local", "graph", "global"],
+    index=0,
+    help="hybrid = vector + graph + community (recommended). local = vector only. graph = graph traversal. global = community summaries.",
 )
 
-# Output Format Selection
+# Output format
 output_format = st.sidebar.selectbox(
     "Output Format",
     options=["docx", "json", "csv"],
-    index=0
+    index=0,
 )
 
-# API Keys Inputs
-st.sidebar.subheader("API Keys")
-GROQ_API_KEY = st.sidebar.text_input(
-    "GROQ API Key",
-    type="password"
-)
-VOYAGEAI_API_key = st.sidebar.text_input(
-    "VOYAGEAI API Key",
-    type="password"
-)
+# Advanced settings
+with st.sidebar.expander("Advanced Settings"):
+    build_graph = st.checkbox("Build Knowledge Graph", value=True, help="Extract entities and relationships into a knowledge graph.")
+    use_cot = st.checkbox("Chain-of-Thought Prompting", value=True, help="Use structured CoT prompts for better extraction.")
+    n_chunks = st.slider("Chunks to retrieve", min_value=3, max_value=30, value=10, help="Number of chunks to use as context for summarization.")
 
-# Start Processing Button
-if st.sidebar.button("Start Processing"):
-    if not uploaded_files:
-        st.error("Please upload at least one PDF file.")
-    elif not GROQ_API_KEY or not VOYAGEAI_API_key:
-        st.error("Please provide both GROQ and VOYAGEAI API keys.")
-    elif not prompt.strip():
-        st.error("Please enter a prompt for summarization.")
-    else:
-        with st.spinner("Processing PDFs..."):
-            summaries = summarizer.summarize_pdfs(
-                uploaded_files=uploaded_files,
-                prompt=prompt,
-                GROQ_API_KEY=GROQ_API_KEY,
-                VOYAGEAI_API_key=VOYAGEAI_API_key,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                similarity_threshold=similarity_threshold,
-                num_clusters=num_clusters,
-                start_section=start_section,
-                output_format=output_format
-            )
-        
-        if summaries:
-            # Store summaries in session_state
-            st.session_state.summaries.update(summaries)
-            st.success("Summaries generated successfully!")
+
+# ---------------------------------------------------------------------------
+# Initialize ResSum
+# ---------------------------------------------------------------------------
+def init_res_sum():
+    """Initialize or reinitialize the ResSum instance."""
+    from res_sum import ResSum
+
+    data_dir = os.path.join(st.session_state.temp_dir, "knowledge_base")
+
+    kwargs = {
+        "llm_provider": provider,
+        "model": model,
+        "domain": domain,
+        "data_dir": data_dir,
+        "build_graph": build_graph,
+        "start_section": start_section,
+    }
+    if api_key:
+        kwargs["api_key"] = api_key
+
+    st.session_state.rs = ResSum(**kwargs)
+    return st.session_state.rs
+
+
+# ---------------------------------------------------------------------------
+# Main content — Tabs
+# ---------------------------------------------------------------------------
+st.title("📚 res-sum — Research Evidence Synthesis")
+st.caption("Upload research papers, build knowledge graphs, and generate structured summaries using LLMs.")
+
+tab_summarize, tab_graph, tab_vectors, tab_communities = st.tabs([
+    "📝 Summarize",
+    "🔗 Knowledge Graph",
+    "📦 Vector Store",
+    "🏘️ Communities",
+])
+
+
+# ---------------------------------------------------------------------------
+# Tab 1: Summarize
+# ---------------------------------------------------------------------------
+with tab_summarize:
+    st.header("Upload & Summarize Papers")
+
+    # File uploader
+    uploaded_files = st.file_uploader(
+        "Upload PDF files",
+        type=["pdf"],
+        accept_multiple_files=True,
+        help="Upload one or more research papers in PDF format.",
+    )
+
+    if uploaded_files:
+        st.success(f"{len(uploaded_files)} file(s) uploaded.")
+
+    # Custom prompt
+    prompt = st.text_area(
+        "Summarization Prompt",
+        value="Provide a comprehensive summary of this research paper, focusing on the research problem, methods used, key findings, and their implications.",
+        height=100,
+        help="This prompt guides what the LLM focuses on when summarizing.",
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        ingest_btn = st.button("🔄 Ingest Papers", use_container_width=True, type="primary")
+
+    with col2:
+        summarize_btn = st.button("📝 Generate Summaries", use_container_width=True)
+
+    # --- Ingest ---
+    if ingest_btn:
+        if not uploaded_files:
+            st.error("Please upload at least one PDF file.")
+        elif not api_key and provider != "ollama":
+            st.error(f"Please provide an API key for {provider}.")
         else:
-            st.warning("No summaries were generated.")
+            # Save uploaded files to temp directory
+            pdf_dir = os.path.join(st.session_state.temp_dir, "pdfs")
+            os.makedirs(pdf_dir, exist_ok=True)
 
-# Display Download Buttons from session_state
-if st.session_state.summaries:
-    st.header("Download Summaries")
-    
-    # Display individual download buttons
-    for pdf_filename, summary_file in st.session_state.summaries.items():
-        if summary_file:
-            if output_format == 'docx':
-                st.download_button(
-                    label=f"Download {pdf_filename} Summary (DOCX)",
-                    data=summary_file,
-                    file_name=f"Summary-{os.path.splitext(pdf_filename)[0]}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    key=f"download_docx_{pdf_filename}"
-                )
-            elif output_format == 'json':
-                st.download_button(
-                    label=f"Download {pdf_filename} Summary (JSON)",
-                    data=summary_file,
-                    file_name=f"Summary-{os.path.splitext(pdf_filename)[0]}.json",
-                    mime="application/json",
-                    key=f"download_json_{pdf_filename}"
-                )
-            elif output_format == 'csv':
-                st.download_button(
-                    label=f"Download {pdf_filename} Summary (CSV)",
-                    data=summary_file,
-                    file_name=f"Summary-{os.path.splitext(pdf_filename)[0]}.csv",
-                    mime="text/csv",
-                    key=f"download_csv_{pdf_filename}"
-                )
-    
-    # Add a separator
-    st.markdown("---")
-    
-    # Add the "Download All Summaries" button within an expander for better UI
-    with st.expander("Download All Summaries as ZIP"):
-        if st.button("Download All Summaries"):
-            # Ensure there are summaries to download
-            if st.session_state.summaries:
-                with st.spinner("Generating ZIP file..."):
-                    zip_buffer = generate_zip(st.session_state.summaries, output_format)
-                st.success("ZIP file generated successfully!")
-                st.download_button(
-                    label="📥 Download All Summaries (ZIP)",
-                    data=zip_buffer,
-                    file_name="All_Summaries.zip",
-                    mime="application/zip"
-                )
+            for f in uploaded_files:
+                filepath = os.path.join(pdf_dir, f.name)
+                with open(filepath, "wb") as out:
+                    out.write(f.getbuffer())
+
+            with st.spinner("Initializing res-sum..."):
+                rs = init_res_sum()
+
+            with st.spinner("Ingesting papers — extracting text, building vector store and knowledge graph..."):
+                try:
+                    results = rs.ingest_papers(pdf_dir, rebuild=True)
+                    st.session_state.ingested = True
+
+                    # Show results
+                    for r in results:
+                        if r.ingested:
+                            st.success(f"✅ {r.filename}: {r.num_chunks} chunks, {r.num_entities} entities, {r.num_relationships} relationships")
+                        else:
+                            st.warning(f"⚠️ {r.filename}: failed to ingest")
+
+                    # Generate dashboard HTML for other tabs
+                    dashboard_path = rs.explore(
+                        output_path=os.path.join(st.session_state.temp_dir, "dashboard.html"),
+                        open_browser=False,
+                    )
+                    st.session_state.dashboard_html = Path(dashboard_path).read_text(encoding="utf-8")
+
+                    stats = rs.stats()
+                    st.info(
+                        f"Knowledge base: {stats['graph_nodes']} nodes, "
+                        f"{stats['graph_edges']} edges, "
+                        f"{stats['total_chunks']} chunks"
+                    )
+                except Exception as e:
+                    st.error(f"Ingestion failed: {e}")
+
+    # --- Summarize ---
+    if summarize_btn:
+        if not st.session_state.ingested:
+            st.error("Please ingest papers first.")
+        else:
+            rs = st.session_state.rs
+            if rs is None:
+                st.error("ResSum not initialized. Please ingest papers first.")
             else:
-                st.warning("No summaries available to download.")
+                # Get list of ingested papers
+                papers = rs.vector_store.list_papers() if hasattr(rs.vector_store, "list_papers") else []
+
+                with st.spinner("Generating summaries..."):
+                    progress = st.progress(0)
+                    summaries = {}
+
+                    for idx, paper in enumerate(papers):
+                        try:
+                            summary = rs.summarize(
+                                query=prompt,
+                                prompt=prompt,
+                                use_cot=use_cot,
+                                n_chunks=n_chunks,
+                                paper_filter=paper,
+                                mode=retrieval_mode,
+                            )
+                            summaries[paper] = summary
+                            st.success(f"✅ {paper}")
+                        except Exception as e:
+                            st.error(f"❌ {paper}: {e}")
+
+                        progress.progress((idx + 1) / len(papers))
+
+                    st.session_state.summaries = summaries
+                    progress.empty()
+
+    # --- Display & Download Summaries ---
+    if st.session_state.summaries:
+        st.markdown("---")
+        st.header("Generated Summaries")
+
+        for paper, summary in st.session_state.summaries.items():
+            with st.expander(f"📄 {paper}", expanded=True):
+                st.markdown(summary)
+
+                # Download buttons
+                clean_name = os.path.splitext(paper)[0]
+
+                if output_format == "docx":
+                    try:
+                        from docx import Document
+                        doc = Document()
+                        doc.add_heading(f"Summary — {clean_name}", level=1)
+                        doc.add_paragraph(summary)
+                        buf = BytesIO()
+                        doc.save(buf)
+                        buf.seek(0)
+                        st.download_button(
+                            f"Download DOCX",
+                            data=buf,
+                            file_name=f"Summary-{clean_name}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key=f"dl_docx_{paper}",
+                        )
+                    except ImportError:
+                        st.warning("python-docx not installed. Install with: pip install python-docx")
+
+                elif output_format == "json":
+                    data = json.dumps({"title": paper, "summary": summary}, indent=2)
+                    st.download_button(
+                        f"Download JSON",
+                        data=data,
+                        file_name=f"Summary-{clean_name}.json",
+                        mime="application/json",
+                        key=f"dl_json_{paper}",
+                    )
+
+                elif output_format == "csv":
+                    import csv
+                    buf = BytesIO()
+                    writer = csv.writer(buf := BytesIO())
+                    buf.write(b"title,summary\n")
+                    # Escape CSV properly
+                    csv_line = f'"{paper}","{summary.replace(chr(34), chr(34)+chr(34))}"\n'
+                    buf.write(csv_line.encode())
+                    buf.seek(0)
+                    st.download_button(
+                        f"Download CSV",
+                        data=buf,
+                        file_name=f"Summary-{clean_name}.csv",
+                        mime="text/csv",
+                        key=f"dl_csv_{paper}",
+                    )
+
+        # Download all as ZIP
+        st.markdown("---")
+        if st.button("📥 Download All Summaries as ZIP"):
+            import zipfile
+            zip_buf = BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for paper, summary in st.session_state.summaries.items():
+                    clean_name = os.path.splitext(paper)[0]
+                    zf.writestr(f"Summary-{clean_name}.txt", summary)
+            zip_buf.seek(0)
+            st.download_button(
+                "📥 Download ZIP",
+                data=zip_buf,
+                file_name="all_summaries.zip",
+                mime="application/zip",
+                key="dl_zip",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Tab 2: Knowledge Graph
+# ---------------------------------------------------------------------------
+with tab_graph:
+    st.header("Knowledge Graph")
+
+    if st.session_state.dashboard_html:
+        # Extract just the graph tab content and render it
+        # Easier: render the full dashboard in an iframe-like component
+        import streamlit.components.v1 as components
+        components.html(st.session_state.dashboard_html, height=1000, scrolling=True)
+    else:
+        st.info("Ingest papers first to build the knowledge graph. Go to the **Summarize** tab and click **Ingest Papers**.")
+
+
+# ---------------------------------------------------------------------------
+# Tab 3: Vector Store
+# ---------------------------------------------------------------------------
+with tab_vectors:
+    st.header("Vector Store Browser")
+
+    if st.session_state.rs and st.session_state.ingested:
+        rs = st.session_state.rs
+        vs = rs.vector_store
+
+        st.metric("Total Chunks", vs.count())
+
+        # Search
+        search_query = st.text_input("Search chunks by semantic similarity", placeholder="e.g., trophic cascade effects on prey populations")
+
+        if search_query:
+            results = vs.search(search_query, n_results=10)
+            docs = results.get("documents", [[]])[0]
+            ids = results.get("ids", [[]])[0]
+            distances = results.get("distances", [[]])[0]
+
+            for doc, doc_id, dist in zip(docs, ids, distances):
+                score = 1.0 / (1.0 + dist)
+                with st.expander(f"Score: {score:.4f} — {doc_id[:12]}..."):
+                    st.markdown(doc)
+        else:
+            # Browse all chunks
+            papers = vs.list_papers() if hasattr(vs, "list_papers") else []
+            if papers:
+                selected_paper = st.selectbox("Filter by paper", ["All papers"] + papers)
+                where = {"paper_filename": selected_paper} if selected_paper != "All papers" else None
+
+                try:
+                    if where:
+                        all_data = vs.collection.get(where=where, include=["metadatas", "documents"])
+                    else:
+                        all_data = vs.collection.get(include=["metadatas", "documents"])
+
+                    for i in range(min(len(all_data.get("ids", [])), 50)):  # Cap at 50 for performance
+                        doc = all_data["documents"][i] if all_data.get("documents") else ""
+                        meta = all_data["metadatas"][i] if all_data.get("metadatas") else {}
+                        section = meta.get("section", "unknown")
+
+                        with st.expander(f"Chunk {i+1} — Section: {section} — {all_data['ids'][i][:12]}..."):
+                            st.markdown(doc[:500] + ("..." if len(doc) > 500 else ""))
+                except Exception as e:
+                    st.error(f"Failed to browse chunks: {e}")
+    else:
+        st.info("Ingest papers first. Go to the **Summarize** tab and click **Ingest Papers**.")
+
+
+# ---------------------------------------------------------------------------
+# Tab 4: Communities
+# ---------------------------------------------------------------------------
+with tab_communities:
+    st.header("Community Detection")
+
+    if st.session_state.rs and st.session_state.ingested:
+        rs = st.session_state.rs
+        communities = rs.get_communities() if hasattr(rs, "get_communities") else {}
+
+        if communities:
+            st.metric("Number of Communities", len(communities))
+
+            for comm_id, entities in communities.items():
+                with st.expander(f"Community {comm_id} — {len(entities)} entities"):
+                    for entity in entities:
+                        st.markdown(f"- {entity}")
+
+                    # Show community summary if available
+                    if hasattr(rs, "_community_summaries") and comm_id in rs._community_summaries:
+                        st.markdown("---")
+                        st.markdown(f"**Summary:** {rs._community_summaries[comm_id]}")
+        else:
+            st.info("No communities detected. This usually means the knowledge graph has too few nodes.")
+    else:
+        st.info("Ingest papers first. Go to the **Summarize** tab and click **Ingest Papers**.")
+
+
+# ---------------------------------------------------------------------------
+# Footer
+# ---------------------------------------------------------------------------
+st.markdown("---")
+st.markdown(
+    '<p style="text-align:center;color:#888;font-size:13px;">'
+    'Powered by <a href="https://pypi.org/project/res-sum/" target="_blank">res-sum</a> '
+    '— Open-source research evidence synthesis with GraphRAG'
+    '</p>',
+    unsafe_allow_html=True,
+)
