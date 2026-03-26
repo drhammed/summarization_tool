@@ -142,19 +142,25 @@ def init_res_sum():
 st.title("📚 res-sum — Research Evidence Synthesis")
 st.caption("Upload research papers, build knowledge graphs, and generate structured summaries using LLMs.")
 
-tab_summarize, tab_graph, tab_vectors, tab_communities = st.tabs([
-    "📝 Summarize",
+tab_analysis, tab_graph, tab_vectors, tab_communities = st.tabs([
+    "🔬 Analysis",
     "🔗 Knowledge Graph",
     "📦 Vector Store",
     "🏘️ Communities",
 ])
 
+# Session state for stop button
+if "stop_requested" not in st.session_state:
+    st.session_state.stop_requested = False
+if "error_log" not in st.session_state:
+    st.session_state.error_log = []
+
 
 # ---------------------------------------------------------------------------
-# Tab 1: Summarize
+# Tab 1: Analysis (combined ingest + summarize)
 # ---------------------------------------------------------------------------
-with tab_summarize:
-    st.header("Upload & Summarize Papers")
+with tab_analysis:
+    st.header("Upload & Analyze Papers")
 
     # File uploader
     uploaded_files = st.file_uploader(
@@ -169,22 +175,28 @@ with tab_summarize:
 
     # Custom prompt
     prompt = st.text_area(
-        "Summarization Prompt",
+        "What would you like to extract or synthesize from these papers?",
         value="Provide a comprehensive summary of this research paper, focusing on the research problem, methods used, key findings, and their implications.",
         height=100,
-        help="This prompt guides what the LLM focuses on when summarizing.",
+        help="This prompt guides both knowledge graph extraction and the final synthesis.",
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([3, 1])
 
     with col1:
-        ingest_btn = st.button("🔄 Ingest Papers", use_container_width=True, type="primary")
+        run_btn = st.button("🔬 Run Analysis", use_container_width=True, type="primary")
 
     with col2:
-        summarize_btn = st.button("📝 Generate Summaries", use_container_width=True)
+        stop_btn = st.button("⛔ Stop", use_container_width=True)
 
-    # --- Ingest ---
-    if ingest_btn:
+    if stop_btn:
+        st.session_state.stop_requested = True
+        st.warning("Stop requested. The current operation will halt after the current paper.")
+
+    if run_btn:
+        st.session_state.stop_requested = False
+        st.session_state.error_log = []
+
         if not uploaded_files:
             st.error("Please upload at least one PDF file.")
         elif not api_key and provider != "ollama":
@@ -199,20 +211,24 @@ with tab_summarize:
                 with open(filepath, "wb") as out:
                     out.write(f.getbuffer())
 
-            with st.spinner("Initializing res-sum..."):
-                rs = init_res_sum()
+            # --- Phase 1: Ingest ---
+            status = st.status("**Phase 1/2:** Ingesting papers — building knowledge base...", expanded=True)
 
-            with st.spinner("Ingesting papers — extracting text, building vector store and knowledge graph..."):
+            with status:
                 try:
+                    rs = init_res_sum()
                     results = rs.ingest_papers(pdf_dir, rebuild=True)
                     st.session_state.ingested = True
 
-                    # Show results
                     for r in results:
+                        if st.session_state.stop_requested:
+                            st.warning("Stopped by user.")
+                            break
                         if r.ingested:
-                            st.success(f"✅ {r.filename}: {r.num_chunks} chunks, {r.num_entities} entities, {r.num_relationships} relationships")
+                            st.write(f"✅ {r.filename}: {r.num_chunks} chunks, {r.num_entities} entities")
                         else:
-                            st.warning(f"⚠️ {r.filename}: failed to ingest")
+                            st.write(f"⚠️ {r.filename}: failed")
+                            st.session_state.error_log.append(f"Ingestion failed: {r.filename}")
 
                     # Generate dashboard HTML for other tabs
                     dashboard_path = rs.explore(
@@ -222,32 +238,33 @@ with tab_summarize:
                     st.session_state.dashboard_html = Path(dashboard_path).read_text(encoding="utf-8")
 
                     stats = rs.stats()
-                    st.info(
-                        f"Knowledge base: {stats['graph_nodes']} nodes, "
-                        f"{stats['graph_edges']} edges, "
-                        f"{stats['total_chunks']} chunks"
+                    st.write(
+                        f"Knowledge base: **{stats['graph_nodes']}** nodes, "
+                        f"**{stats['graph_edges']}** edges, "
+                        f"**{stats['total_chunks']}** chunks"
                     )
+                    status.update(label="**Phase 1/2:** Ingestion complete", state="complete")
+
                 except Exception as e:
+                    st.session_state.error_log.append(f"Ingestion error: {e}")
+                    status.update(label="**Phase 1/2:** Ingestion failed", state="error")
                     st.error(f"Ingestion failed: {e}")
 
-    # --- Summarize ---
-    if summarize_btn:
-        if not st.session_state.ingested:
-            st.error("Please ingest papers first.")
-        else:
-            rs = st.session_state.rs
-            if rs is None:
-                st.error("ResSum not initialized. Please ingest papers first.")
-            else:
-                # Get list of ingested papers
+            # --- Phase 2: Summarize ---
+            if st.session_state.ingested and not st.session_state.stop_requested:
+                rs = st.session_state.rs
                 papers = rs.vector_store.list_papers() if hasattr(rs.vector_store, "list_papers") else []
 
-                with st.spinner("Generating summaries..."):
-                    progress = st.progress(0)
-                    summaries = {}
+                status2 = st.status(f"**Phase 2/2:** Generating summaries for {len(papers)} paper(s)...", expanded=True)
 
+                with status2:
+                    summaries = {}
                     for idx, paper in enumerate(papers):
+                        if st.session_state.stop_requested:
+                            st.warning("Stopped by user.")
+                            break
                         try:
+                            st.write(f"Processing {paper}...")
                             summary = rs.summarize(
                                 query=prompt,
                                 prompt=prompt,
@@ -257,14 +274,19 @@ with tab_summarize:
                                 mode=retrieval_mode,
                             )
                             summaries[paper] = summary
-                            st.success(f"✅ {paper}")
+                            st.write(f"✅ {paper}")
                         except Exception as e:
-                            st.error(f"❌ {paper}: {e}")
-
-                        progress.progress((idx + 1) / len(papers))
+                            st.write(f"❌ {paper}: {e}")
+                            st.session_state.error_log.append(f"Summary failed for {paper}: {e}")
 
                     st.session_state.summaries = summaries
-                    progress.empty()
+                    status2.update(label=f"**Phase 2/2:** {len(summaries)} summary(ies) generated", state="complete")
+
+            # Show error log if any
+            if st.session_state.error_log:
+                with st.expander("⚠️ Error Log", expanded=False):
+                    for err in st.session_state.error_log:
+                        st.code(err, language=None)
 
     # --- Display & Download Summaries ---
     if st.session_state.summaries:
