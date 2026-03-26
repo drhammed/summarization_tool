@@ -146,11 +146,9 @@ def init_res_sum():
 st.title("📚 res-sum — Research Evidence Synthesis")
 st.caption("Upload research papers, build knowledge graphs, and generate structured summaries using LLMs.")
 
-tab_analysis, tab_graph, tab_vectors, tab_communities = st.tabs([
+tab_analysis, tab_explore = st.tabs([
     "🔬 Analysis",
-    "🔗 Knowledge Graph",
-    "📦 Vector Store",
-    "🏘️ Communities",
+    "🔗 Explore Knowledge Base",
 ])
 
 # ---------------------------------------------------------------------------
@@ -363,97 +361,17 @@ with tab_analysis:
 
 
 # ---------------------------------------------------------------------------
-# Tab 2: Knowledge Graph
+# Tab 2: Explore Knowledge Base (embedded dashboard)
 # ---------------------------------------------------------------------------
-with tab_graph:
-    st.header("Knowledge Graph")
+with tab_explore:
+    st.header("Explore Knowledge Base")
+    st.caption("Interactive dashboard with Overview, Knowledge Graph, Vector Store, and Communities — all in one view.")
 
     if st.session_state.dashboard_html:
-        # Extract just the graph tab content and render it
-        # Easier: render the full dashboard in an iframe-like component
         import streamlit.components.v1 as components
-        components.html(st.session_state.dashboard_html, height=1000, scrolling=True)
+        components.html(st.session_state.dashboard_html, height=1200, scrolling=True)
     else:
-        st.info("Ingest papers first to build the knowledge graph. Go to the **Summarize** tab and click **Ingest Papers**.")
-
-
-# ---------------------------------------------------------------------------
-# Tab 3: Vector Store
-# ---------------------------------------------------------------------------
-with tab_vectors:
-    st.header("Vector Store Browser")
-
-    if st.session_state.rs and st.session_state.ingested:
-        rs = st.session_state.rs
-        vs = rs.vector_store
-
-        st.metric("Total Chunks", vs.count())
-
-        # Search
-        search_query = st.text_input("Search chunks by semantic similarity", placeholder="e.g., trophic cascade effects on prey populations")
-
-        if search_query:
-            results = vs.search(search_query, n_results=10)
-            docs = results.get("documents", [[]])[0]
-            ids = results.get("ids", [[]])[0]
-            distances = results.get("distances", [[]])[0]
-
-            for doc, doc_id, dist in zip(docs, ids, distances):
-                score = 1.0 / (1.0 + dist)
-                with st.expander(f"Score: {score:.4f} — {doc_id[:12]}..."):
-                    st.markdown(doc)
-        else:
-            # Browse all chunks
-            papers = vs.list_papers() if hasattr(vs, "list_papers") else []
-            if papers:
-                selected_paper = st.selectbox("Filter by paper", ["All papers"] + papers)
-                where = {"paper_filename": selected_paper} if selected_paper != "All papers" else None
-
-                try:
-                    if where:
-                        all_data = vs.collection.get(where=where, include=["metadatas", "documents"])
-                    else:
-                        all_data = vs.collection.get(include=["metadatas", "documents"])
-
-                    for i in range(min(len(all_data.get("ids", [])), 50)):  # Cap at 50 for performance
-                        doc = all_data["documents"][i] if all_data.get("documents") else ""
-                        meta = all_data["metadatas"][i] if all_data.get("metadatas") else {}
-                        section = meta.get("section", "unknown")
-
-                        with st.expander(f"Chunk {i+1} — Section: {section} — {all_data['ids'][i][:12]}..."):
-                            st.markdown(doc[:500] + ("..." if len(doc) > 500 else ""))
-                except Exception as e:
-                    st.error(f"Failed to browse chunks: {e}")
-    else:
-        st.info("Ingest papers first. Go to the **Summarize** tab and click **Ingest Papers**.")
-
-
-# ---------------------------------------------------------------------------
-# Tab 4: Communities
-# ---------------------------------------------------------------------------
-with tab_communities:
-    st.header("Community Detection")
-
-    if st.session_state.rs and st.session_state.ingested:
-        rs = st.session_state.rs
-        communities = rs.get_communities() if hasattr(rs, "get_communities") else {}
-
-        if communities:
-            st.metric("Number of Communities", len(communities))
-
-            for comm_id, entities in communities.items():
-                with st.expander(f"Community {comm_id} — {len(entities)} entities"):
-                    for entity in entities:
-                        st.markdown(f"- {entity}")
-
-                    # Show community summary if available
-                    if hasattr(rs, "_community_summaries") and comm_id in rs._community_summaries:
-                        st.markdown("---")
-                        st.markdown(f"**Summary:** {rs._community_summaries[comm_id]}")
-        else:
-            st.info("No communities detected. This usually means the knowledge graph has too few nodes.")
-    else:
-        st.info("Ingest papers first. Go to the **Summarize** tab and click **Ingest Papers**.")
+        st.info("Run analysis first to build the knowledge base. Go to the **Analysis** tab and click **Run Analysis**.")
 
 
 # ---------------------------------------------------------------------------
