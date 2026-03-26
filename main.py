@@ -28,6 +28,10 @@ if "dashboard_html" not in st.session_state:
     st.session_state.dashboard_html = None
 if "temp_dir" not in st.session_state:
     st.session_state.temp_dir = tempfile.mkdtemp(prefix="res_sum_")
+if "stop_requested" not in st.session_state:
+    st.session_state.stop_requested = False
+if "error_log" not in st.session_state:
+    st.session_state.error_log = []
 
 
 # ---------------------------------------------------------------------------
@@ -148,13 +152,6 @@ tab_analysis, tab_graph, tab_vectors, tab_communities = st.tabs([
     "📦 Vector Store",
     "🏘️ Communities",
 ])
-
-# Session state for stop button
-if "stop_requested" not in st.session_state:
-    st.session_state.stop_requested = False
-if "error_log" not in st.session_state:
-    st.session_state.error_log = []
-
 
 # ---------------------------------------------------------------------------
 # Tab 1: Analysis (combined ingest + summarize)
