@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Upload research papers and generate evidence-based summaries with res-sum, hosted on Streamlit.">
+    <title>res-sum — Research Evidence Synthesis</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #172b24;
+        background: #ffffff;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        height: 100vh;
+        height: 100dvh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+        gap: 16px;
+        padding: 12px 20px;
+        border-bottom: 1px solid #dce5e0;
+      }
+
+      h1 { margin: 0; font-size: 18px; letter-spacing: -0.4px; }
+      p { margin: 3px 0 0; color: #53665c; font-size: 12px; line-height: 1.5; }
+
+      a {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 44px;
+        padding: 10px 14px;
+        border: 1px solid #c6d8cc;
+        border-radius: 8px;
+        color: #24543a;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      a:hover { background: #eff6f1; }
+      a:focus-visible { outline: 3px solid #438961; outline-offset: 3px; }
+      main { display: flex; flex: 1; min-height: 0; }
+      iframe { width: 100%; height: 100%; border: 0; }
+
+      @media (max-width: 520px) {
+        header { gap: 10px; padding: 10px 12px; }
+        a { padding: 10px; }
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root { color: #eef5f0; background: #0e1117; }
+        header { border-color: #34443b; }
+        p { color: #b1c3b7; }
+        a { color: #c2e4ce; border-color: #4b6b55; }
+        a:hover { background: #1e3025; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>res-sum</h1>
+        <p>Research evidence synthesis · Hosted on Streamlit</p>
+      </div>
+      <a href="https://sum-tool.streamlit.app/" target="_blank" rel="noopener noreferrer">
+        Open in new tab <span aria-hidden="true">↗</span>
+      </a>
+    </header>
+    <main>
+      <iframe
+        src="https://sum-tool.streamlit.app/?embed=true"
+        title="res-sum — Research paper summarization app"
+        allow="clipboard-write"
+      ></iframe>
+    </main>
+  </body>
+</html>

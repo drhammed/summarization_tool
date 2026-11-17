@@ -3,10 +3,8 @@ title: res-sum Research Evidence Synthesis
 emoji: 📚
 colorFrom: green
 colorTo: blue
-sdk: streamlit
-sdk_version: "1.44.1"
-python_version: "3.11"
-app_file: main.py
+sdk: static
+app_file: index.html
 pinned: false
 ---
 
@@ -28,23 +26,21 @@ A web interface for [res-sum](https://pypi.org/project/res-sum/) — research pa
 
 ## Deploy to Hugging Face Spaces
 
-The app uses Hugging Face's native Streamlit SDK on the default CPU Basic
-hardware, matching the SDK and hardware used by
-[meta-analysis-extractor](https://huggingface.co/spaces/drhammed/meta-analysis-extractor).
-The YAML metadata above selects Python 3.11, Streamlit 1.44.1, and `main.py` as
-the entry point. Hugging Face installs Python dependencies from
-`requirements.txt` and system dependencies from `packages.txt`.
+Hugging Face serves a free **Static Space** containing `index.html`, which
+embeds the existing public app at `https://sum-tool.streamlit.app/?embed=true`.
+The Python app continues running on Streamlit Community Cloud. Hugging Face
+hosts the page around the app; it does not run Python or process uploaded PDFs.
 
-The native Streamlit SDK is deprecated, although existing Spaces still run it.
-This configuration tests whether Hugging Face still permits creating a new
-native Streamlit Space for this account. Successful creation is not guaranteed:
-the first sync may still be rejected by Hugging Face's hosting eligibility
-rules. See the [Streamlit Spaces documentation](https://huggingface.co/docs/hub/spaces-sdks-streamlit).
+Static Spaces do not require PRO. New Spaces no longer accept the native
+Streamlit SDK, and new Docker or CPU Gradio Spaces require a paid plan. See
+[Static HTML Spaces](https://huggingface.co/docs/hub/spaces-sdks-static) and
+[Streamlit embedding](https://docs.streamlit.io/deploy/streamlit-community-cloud/share-your-app/embed-your-app).
 
 GitHub remains the source of truth:
 
 ```text
-Push to GitHub main → GitHub Actions syncs the app → Hugging Face rebuilds the Space
+Python app changes → GitHub main → Streamlit redeploys the app
+Embed page changes → GitHub main → GitHub Actions updates the Hugging Face page
 ```
 
 ### One-time setup
@@ -52,9 +48,9 @@ Push to GitHub main → GitHub Actions syncs the app → Hugging Face rebuilds t
 1. Create a [Hugging Face access token](https://huggingface.co/settings/tokens)
    with write access to the target Space. The workflow can create
    `drhammed/summarization_tool` automatically if the token also permits creating
-   repositories. The workflow requests the native Streamlit SDK through the API
-   and creates a **public** Space by default. The current New Space form may
-   not offer this deprecated SDK.
+   repositories. The workflow creates a **public Static Space** by default.
+   Alternatively, create the target Space first with the **Static** SDK and
+   grant the token write access to it.
 2. In this GitHub repository's
    [Actions secrets settings](https://github.com/drhammed/summarization_tool/settings/secrets/actions),
    add a repository secret named **`HF_TOKEN`** with that token as its value.
@@ -65,21 +61,20 @@ Push to GitHub main → GitHub Actions syncs the app → Hugging Face rebuilds t
 4. Commit and push these deployment files to `main`. In the repository's
    **Actions** tab, open **Sync to Hugging Face Space** to follow the sync.
    You can also choose **Run workflow** on `main` to retry without a new commit.
-5. After the first successful sync, follow the build logs at
+5. After the first successful sync, open
    `https://huggingface.co/spaces/drhammed/summarization_tool` (or your chosen
-   Space). The app becomes available after the build completes.
-
-If creation returns `402 Payment Required`, the native SDK attempt is also
-blocked by account eligibility. CPU Basic is a hardware tier; choosing it does
-not guarantee that new Space creation is free. The
-[current Spaces documentation](https://huggingface.co/docs/hub/spaces-overview)
-describes the subscription requirements for new compute Spaces.
+   Space). The page embeds the running Streamlit app and includes an
+   **Open in new tab** link for direct access.
 
 Later pushes to `main` sync automatically. Saving a file locally does not deploy
-it; commit and push it to GitHub. Updates are one-way: edit the source in GitHub,
-because the next sync replaces Space files with the GitHub version, including
-removing files deleted from GitHub. The existing Streamlit Community Cloud app
-can continue deploying from the same repository.
+it; commit and push it to GitHub. Keep Streamlit Community Cloud connected to
+this repository's `main` branch with `main.py` as its entry point. Python changes
+then appear in the embedded app after Streamlit redeploys it.
+
+The workflow uploads only `README.md` and `index.html` to Hugging Face. Updates
+are one-way: edit these files in GitHub, because each sync replaces the Space's
+files with this upload set. If you add separate CSS, JavaScript, or image assets,
+add them to the workflow's `include` list too.
 
 The workflow uses Hugging Face's official
 [`hub-sync` action](https://huggingface.co/docs/hub/spaces-github-actions).
@@ -88,18 +83,20 @@ under `.github/workflows/`.
 
 ### API keys and session data
 
-Visitors can enter their own LLM API key in the sidebar. To provide an
-operator-funded default instead, add the relevant `OLLAMA_API_KEY`,
-`GROQ_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY` under the Space's
-**Settings → Variables and secrets → Secrets**. The existing app reads these
-environment variables. A default key is available to everyone using the public
-app, and usage is charged to its owner; leave it unset for visitor-provided keys.
+Visitors enter their LLM API key in the embedded app's sidebar, just as they do
+when opening the Streamlit URL directly. Any operator-funded default API keys
+belong on the **Streamlit backend**, where the Python app reads its environment
+variables. Hugging Face Static Space variables and secrets are not passed to
+the separately hosted Streamlit app. Keep credentials out of `index.html`.
 
-Use a cloud LLM provider on Spaces. The sidebar's local `ollama` option expects
+Use a cloud LLM provider in the hosted app. The sidebar's local `ollama` option expects
 an Ollama server on the hosting machine; the hosted app does not include one.
 
-Uploaded PDFs, knowledge bases, and summaries use temporary session directories;
-they are lost on a Space restart or rebuild. Download results before redeploying.
+Uploaded PDFs, knowledge bases, and summaries stay in the Streamlit session's
+temporary directories and can be lost when the Streamlit backend restarts or
+redeploys. Keep the Streamlit app public and running so that it can be embedded.
+If the embedded app is unavailable or asleep, use **Open in new tab** to access
+the Streamlit app directly.
 
 ## Run Locally
 

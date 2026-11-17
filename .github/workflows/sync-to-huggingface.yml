@@ -37,11 +37,7 @@ jobs:
           huggingface_repo_id: ${{ vars.HF_SPACE_ID || 'drhammed/summarization_tool' }}
           hf_token: ${{ secrets.HF_TOKEN }}
           repo_type: space
-          space_sdk: streamlit
-          exclude: |
-            .env
-            .env.*
-            **/secrets.toml
-            sum-app.yml
-            Dockerfile
-            .dockerignore
+          space_sdk: static
+          include: |
+            README.md
+            index.html
