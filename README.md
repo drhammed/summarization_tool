@@ -124,6 +124,17 @@ Upload PDFs → res-sum ingests → ChromaDB + NetworkX → Hybrid retrieval →
 
 ## Configuration
 
+The **Chain-of-Thought Prompting** checkbox controls the instructions used for
+summarization:
+
+- **Checked:** combine the selected domain's built-in structured template with
+  the text-box instructions. If the box is empty, use the domain template alone.
+- **Unchecked:** use only the text-box instructions. If the box is empty, use
+  the package's basic summarization prompt.
+
+Whitespace-only text is treated as empty. The text-box instructions also guide
+retrieval; the checkbox applies to summarization, not knowledge graph extraction.
+
 Set API keys as environment variables to avoid re-entering them:
 
 ```bash

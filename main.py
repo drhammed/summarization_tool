@@ -113,7 +113,11 @@ output_format = st.sidebar.selectbox(
 # Advanced settings
 with st.sidebar.expander("Advanced Settings"):
     build_graph = st.checkbox("Build Knowledge Graph", value=True, help="Extract entities and relationships into a knowledge graph.")
-    use_cot = st.checkbox("Chain-of-Thought Prompting", value=True, help="Use structured CoT prompts for better extraction.")
+    use_cot = st.checkbox(
+        "Chain-of-Thought Prompting",
+        value=True,
+        help="Add the selected domain's structured summary template to your instructions.",
+    )
     n_chunks = st.slider("Chunks to retrieve", min_value=3, max_value=30, value=10, help="Number of chunks to use as context for summarization.")
 
 
@@ -139,6 +143,15 @@ def init_res_sum():
 
     st.session_state.rs = ResSum(**kwargs)
     return st.session_state.rs
+
+
+def build_summary_prompt(user_prompt, domain_config, use_cot):
+    """Combine domain guidance with user instructions before passing a custom prompt."""
+    user_prompt = user_prompt.strip()
+    cot_prompt = domain_config.cot_prompt.strip() if use_cot else ""
+    if cot_prompt and user_prompt:
+        return f"{cot_prompt}\n\nAdditional user instructions:\n{user_prompt}"
+    return cot_prompt or user_prompt or None
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +188,11 @@ with tab_analysis:
         "What would you like to extract or synthesize from these papers?",
         value="Provide a comprehensive summary of this research paper, focusing on the research problem, methods used, key findings, and their implications.",
         height=100,
-        help="This prompt guides both knowledge graph extraction and the final synthesis.",
+        help=(
+            "Guides retrieval and the final summary. With Chain-of-Thought Prompting enabled, "
+            "your instructions are added to the selected domain's template. Leave blank to "
+            "use the domain template when checked, or a basic summary prompt when unchecked."
+        ),
     )
 
     col1, col2 = st.columns([3, 1])
@@ -250,6 +267,7 @@ with tab_analysis:
             # --- Phase 2: Summarize ---
             if st.session_state.ingested and not st.session_state.stop_requested:
                 rs = st.session_state.rs
+                summary_prompt = build_summary_prompt(prompt, rs.domain_config, use_cot)
                 papers = rs.vector_store.list_papers() if hasattr(rs.vector_store, "list_papers") else []
 
                 status2 = st.status(f"**Phase 2/2:** Generating summaries for {len(papers)} paper(s)...", expanded=True)
@@ -263,8 +281,8 @@ with tab_analysis:
                         try:
                             st.write(f"Processing {paper}...")
                             summary = rs.summarize(
-                                query=prompt,
-                                prompt=prompt,
+                                query=prompt.strip() or None,
+                                prompt=summary_prompt,
                                 use_cot=use_cot,
                                 n_chunks=n_chunks,
                                 paper_filter=paper,
