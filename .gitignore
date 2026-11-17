@@ -10,8 +10,14 @@
 .DS_Store
 
 
-#Ignore the folder
+# Ignore folders, except GitHub Actions workflows
 */
+!.github/
+!.github/workflows/
+
+# Local credentials
+.env
+.env.*
 
 #Ignore  the csv files
 *.csv

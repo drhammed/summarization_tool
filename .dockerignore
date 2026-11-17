@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+venv
+env
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.cache
+.env
+.env.*
+**/secrets.toml
+knowledge_base
+sum-app.yml
