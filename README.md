@@ -124,6 +124,15 @@ Upload PDFs → res-sum ingests → ChromaDB + NetworkX → Hybrid retrieval →
 
 ## Configuration
 
+**Paper chunks per summary** controls how many paper passages are requested for
+each summary, not how many passages are extracted or stored. A paper can produce
+18 stored chunks while the slider requests 10 for its summary. If fewer chunks
+are available, fewer are used. Global retrieval can add community summaries
+alongside those paper chunks; Hybrid mode caps its combined context at the
+selected count. Click **Run Analysis** again after changing the setting.
+The Vector Store shows stored chunks, and Semantic Search has its own independent
+result limit.
+
 The **Chain-of-Thought Prompting** checkbox controls the instructions used for
 summarization:
 

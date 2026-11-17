@@ -118,7 +118,18 @@ with st.sidebar.expander("Advanced Settings"):
         value=True,
         help="Add the selected domain's structured summary template to your instructions.",
     )
-    n_chunks = st.slider("Chunks to retrieve", min_value=3, max_value=30, value=10, help="Number of chunks to use as context for summarization.")
+    n_chunks = st.slider(
+        "Paper chunks per summary",
+        min_value=3,
+        max_value=30,
+        value=10,
+        help=(
+            "Maximum paper chunks requested for each summary. All extracted chunks are "
+            "still stored and available in the Vector Store. Global mode can also add "
+            "community summaries."
+        ),
+    )
+    st.caption("Applies on the next Run Analysis. Stored chunk totals can be higher.")
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +250,7 @@ with tab_analysis:
                             st.warning("Stopped by user.")
                             break
                         if r.ingested:
-                            st.write(f"✅ {r.filename}: {r.num_chunks} chunks, {r.num_entities} entities")
+                            st.write(f"✅ {r.filename}: {r.num_chunks} text chunks stored, {r.num_entities} entities")
                         else:
                             st.write(f"⚠️ {r.filename}: failed")
                             st.session_state.error_log.append(f"Ingestion failed: {r.filename}")
@@ -255,7 +266,7 @@ with tab_analysis:
                     st.write(
                         f"Knowledge base: **{stats['graph_nodes']}** nodes, "
                         f"**{stats['graph_edges']}** edges, "
-                        f"**{stats['total_chunks']}** chunks"
+                        f"**{stats['total_chunks']}** stored text chunks"
                     )
                     status.update(label="**Phase 1/2:** Ingestion complete", state="complete")
 
@@ -279,7 +290,12 @@ with tab_analysis:
                             st.warning("Stopped by user.")
                             break
                         try:
-                            st.write(f"Processing {paper}...")
+                            st.write(
+                                f"Processing {paper} — requesting up to {n_chunks} paper chunks "
+                                "for this summary..."
+                            )
+                            if retrieval_mode == "global":
+                                st.caption("Global retrieval can also add community summaries to the context.")
                             summary = rs.summarize(
                                 query=prompt.strip() or None,
                                 prompt=summary_prompt,
@@ -387,7 +403,10 @@ with tab_analysis:
 # ---------------------------------------------------------------------------
 with tab_kb:
     st.header("Knowledge Base")
-    st.caption("Interactive dashboard with Overview, Knowledge Graph, Vector Store preview, and Communities.")
+    st.caption(
+        "Interactive dashboard with Overview, Knowledge Graph, Vector Store preview, and Communities. "
+        "Vector Store counts show stored chunks, independently of the summary retrieval setting."
+    )
 
     if st.session_state.dashboard_html:
         import streamlit.components.v1 as components
@@ -423,7 +442,14 @@ with tab_vectorstore:
                 placeholder="e.g., species distribution modeling, trophic cascade effects...",
                 key="vector_search_query",
             )
-            search_n = st.slider("Number of results", min_value=3, max_value=30, value=10, key="vector_search_n")
+            search_n = st.slider(
+                "Number of results",
+                min_value=3,
+                max_value=30,
+                value=10,
+                key="vector_search_n",
+                help="Limits this search only. Advanced Settings controls retrieval for summaries.",
+            )
 
             if search_query:
                 where = {"paper_filename": search_paper} if search_paper != "All papers" else None
@@ -458,11 +484,11 @@ with tab_vectorstore:
                 st.info("Enter a query above to search with cosine similarity.")
 
         with browse_subtab:
-            st.caption("Browse all chunks stored in the vector database.")
+            st.caption("Browse stored chunks. The summary retrieval setting does not limit this list.")
 
             papers = vs.list_papers() if hasattr(vs, "list_papers") else []
             total = vs.count()
-            st.metric("Total Chunks", total)
+            st.metric("Stored text chunks (all papers)", total)
 
             if papers:
                 selected_paper = st.selectbox(
@@ -479,7 +505,7 @@ with tab_vectorstore:
                         all_data = vs.collection.get(include=["metadatas", "documents"])
 
                     num_chunks = len(all_data.get("ids", []))
-                    st.markdown(f"Showing **{min(num_chunks, 50)}** of **{num_chunks}** chunks")
+                    st.markdown(f"Showing **{min(num_chunks, 50)}** of **{num_chunks}** stored text chunks")
 
                     for i in range(min(num_chunks, 50)):
                         doc = all_data["documents"][i] if all_data.get("documents") else ""
