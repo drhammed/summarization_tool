@@ -3,8 +3,10 @@ title: res-sum Research Evidence Synthesis
 emoji: 📚
 colorFrom: green
 colorTo: blue
-sdk: docker
-app_port: 7860
+sdk: streamlit
+sdk_version: "1.44.1"
+python_version: "3.11"
+app_file: main.py
 pinned: false
 ---
 
@@ -26,10 +28,18 @@ A web interface for [res-sum](https://pypi.org/project/res-sum/) — research pa
 
 ## Deploy to Hugging Face Spaces
 
-The app runs unchanged in Streamlit inside a Docker Space. The `Dockerfile`
-starts it on port 7860, and the YAML metadata above configures the Space.
-Hugging Face's built-in Streamlit SDK is deprecated; use the Docker SDK instead.
-See the [Streamlit Spaces documentation](https://huggingface.co/docs/hub/spaces-sdks-streamlit).
+The app uses Hugging Face's native Streamlit SDK on the default CPU Basic
+hardware, matching the SDK and hardware used by
+[meta-analysis-extractor](https://huggingface.co/spaces/drhammed/meta-analysis-extractor).
+The YAML metadata above selects Python 3.11, Streamlit 1.44.1, and `main.py` as
+the entry point. Hugging Face installs Python dependencies from
+`requirements.txt` and system dependencies from `packages.txt`.
+
+The native Streamlit SDK is deprecated, although existing Spaces still run it.
+This configuration tests whether Hugging Face still permits creating a new
+native Streamlit Space for this account. Successful creation is not guaranteed:
+the first sync may still be rejected by Hugging Face's hosting eligibility
+rules. See the [Streamlit Spaces documentation](https://huggingface.co/docs/hub/spaces-sdks-streamlit).
 
 GitHub remains the source of truth:
 
@@ -39,29 +49,31 @@ Push to GitHub main → GitHub Actions syncs the app → Hugging Face rebuilds t
 
 ### One-time setup
 
-1. Check that your Hugging Face account can create Docker Spaces. The
-   [current Spaces documentation](https://huggingface.co/docs/hub/spaces-overview)
-   requires a paid plan for new Docker Spaces. CPU Basic has no hourly hardware
-   charge; the account plan is separate.
-2. Create a [Hugging Face access token](https://huggingface.co/settings/tokens)
+1. Create a [Hugging Face access token](https://huggingface.co/settings/tokens)
    with write access to the target Space. The workflow can create
    `drhammed/summarization_tool` automatically if the token also permits creating
-   repositories. Alternatively, [create that Space](https://huggingface.co/new-space)
-   first, selecting **Docker**, and give the token write access to it. The
-   workflow creates a **public** Space by default.
-3. In this GitHub repository's
+   repositories. The workflow requests the native Streamlit SDK through the API
+   and creates a **public** Space by default. The current New Space form may
+   not offer this deprecated SDK.
+2. In this GitHub repository's
    [Actions secrets settings](https://github.com/drhammed/summarization_tool/settings/secrets/actions),
    add a repository secret named **`HF_TOKEN`** with that token as its value.
    This is a deployment token; keep it in GitHub, separate from the LLM API keys.
-4. To use a different Space name, add a GitHub Actions repository **variable**
+3. To use a different Space name, add a GitHub Actions repository **variable**
    named `HF_SPACE_ID`, such as `drhammed/res-sum`. Otherwise, the default is
    `drhammed/summarization_tool`.
-5. Commit and push these deployment files to `main`. In the repository's
+4. Commit and push these deployment files to `main`. In the repository's
    **Actions** tab, open **Sync to Hugging Face Space** to follow the sync.
    You can also choose **Run workflow** on `main` to retry without a new commit.
-6. After the first successful sync, follow the build logs at
+5. After the first successful sync, follow the build logs at
    `https://huggingface.co/spaces/drhammed/summarization_tool` (or your chosen
    Space). The app becomes available after the build completes.
+
+If creation returns `402 Payment Required`, the native SDK attempt is also
+blocked by account eligibility. CPU Basic is a hardware tier; choosing it does
+not guarantee that new Space creation is free. The
+[current Spaces documentation](https://huggingface.co/docs/hub/spaces-overview)
+describes the subscription requirements for new compute Spaces.
 
 Later pushes to `main` sync automatically. Saving a file locally does not deploy
 it; commit and push it to GitHub. Updates are one-way: edit the source in GitHub,
@@ -84,11 +96,10 @@ environment variables. A default key is available to everyone using the public
 app, and usage is charged to its owner; leave it unset for visitor-provided keys.
 
 Use a cloud LLM provider on Spaces. The sidebar's local `ollama` option expects
-an Ollama server on the hosting machine, and this Docker image does not run one.
+an Ollama server on the hosting machine; the hosted app does not include one.
 
 Uploaded PDFs, knowledge bases, and summaries use temporary session directories;
 they are lost on a Space restart or rebuild. Download results before redeploying.
-The Docker image runs as a user with UID 1000 and has a writable model cache.
 
 ## Run Locally
 
@@ -97,7 +108,7 @@ pip install -r requirements.txt
 streamlit run main.py
 ```
 
-To try the same container used by Hugging Face:
+For local Docker development:
 
 ```bash
 docker build -t res-sum-space .
